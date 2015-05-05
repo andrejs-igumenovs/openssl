@@ -703,24 +703,13 @@ end_of_options:
 #ifndef OPENSSL_SYS_VMS
         /*
          * outdir is a directory spec, but access() for VMS demands a
-         * filename.  In any case, stat(), below, will catch the problem if
-         * outdir is not a directory spec, and the fopen() or open() will
-         * catch an error if there is no write access.
-         *
-         * Presumably, this problem could also be solved by using the DEC C
-         * routines to convert the directory syntax to Unixly, and give that
-         * to access().  However, time's too short to do that just now.
+         * filename.  We could use the DEC C routine to convert the
+         * directory syntax to Unixly, and give that to app_isdir,
+         * but for now the fopen will catch the error if it's not a
+         * directory
          */
-        if (app_access(outdir, R_OK | W_OK | X_OK) != 0)
-        {
-            BIO_printf(bio_err, "I am unable to access the %s directory\n",
-                       outdir);
-            perror(outdir);
-            goto end;
-        }
-
         if (app_isdir(outdir) <= 0) {
-            BIO_printf(bio_err, "%s need to be a directory\n", outdir);
+            BIO_printf(bio_err, "%s: %s is not a directory\n", prog, outdir);
             perror(outdir);
             goto end;
         }
@@ -1981,7 +1970,7 @@ static int do_body(X509 **xret, EVP_PKEY *pkey, X509 *x509,
     row[DB_type][0] = 'V';
     row[DB_type][1] = '\0';
 
-    irow = app_malloc(sizeof(char *) * (DB_NUMBER + 1), "row space");
+    irow = app_malloc(sizeof(*irow) * (DB_NUMBER + 1), "row space");
     for (i = 0; i < DB_NUMBER; i++) {
         irow[i] = row[i];
         row[i] = NULL;
@@ -2218,7 +2207,7 @@ static int do_revoke(X509 *x509, CA_DB *db, int type, char *value)
         row[DB_type][0] = 'V';
         row[DB_type][1] = '\0';
 
-        irow = app_malloc(sizeof(char *) * (DB_NUMBER + 1), "row ptr");
+        irow = app_malloc(sizeof(*irow) * (DB_NUMBER + 1), "row ptr");
         for (i = 0; i < DB_NUMBER; i++) {
             irow[i] = row[i];
             row[i] = NULL;
@@ -2408,7 +2397,7 @@ static const char *crl_reasons[] = {
     "CAkeyTime"
 };
 
-#define NUM_REASONS (sizeof(crl_reasons) / sizeof(char *))
+#define NUM_REASONS OSSL_NELEM(crl_reasons)
 
 /*
  * Given revocation information convert to a DB string. The format of the
