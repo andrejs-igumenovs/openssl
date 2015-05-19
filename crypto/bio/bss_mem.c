@@ -58,7 +58,7 @@
 
 #include <stdio.h>
 #include <errno.h>
-#include "cryptlib.h"
+#include "internal/cryptlib.h"
 #include <openssl/bio.h>
 
 static int mem_write(BIO *h, const char *buf, int num);
@@ -97,12 +97,12 @@ BIO *BIO_new_mem_buf(void *buf, int len)
     BUF_MEM *b;
     size_t sz;
 
-    if (!buf) {
+    if (buf == NULL) {
         BIOerr(BIO_F_BIO_NEW_MEM_BUF, BIO_R_NULL_PARAMETER);
         return NULL;
     }
     sz = (len < 0) ? strlen(buf) : (size_t)len;
-    if (!(ret = BIO_new(BIO_s_mem())))
+    if ((ret = BIO_new(BIO_s_mem())) == NULL)
         return NULL;
     b = (BUF_MEM *)ret->ptr;
     b->data = buf;

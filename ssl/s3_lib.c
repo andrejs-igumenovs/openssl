@@ -151,11 +151,11 @@
 #include <stdio.h>
 #include <openssl/objects.h>
 #include "ssl_locl.h"
-#include "kssl_lcl.h"
 #include <openssl/md5.h>
 #ifndef OPENSSL_NO_DH
 # include <openssl/dh.h>
 #endif
+#include <openssl/rand.h>
 
 const char ssl3_version_str[] = "SSLv3" OPENSSL_VERSION_PTEXT;
 
@@ -600,233 +600,6 @@ OPENSSL_GLOBAL const SSL_CIPHER ssl3_ciphers[] = {
      112,
      168,
      },
-
-#ifndef OPENSSL_NO_KRB5
-/* The Kerberos ciphers*/
-/* Cipher 1E */
-    {
-     1,
-     SSL3_TXT_KRB5_DES_64_CBC_SHA,
-     SSL3_CK_KRB5_DES_64_CBC_SHA,
-     SSL_kKRB5,
-     SSL_aKRB5,
-     SSL_DES,
-     SSL_SHA1,
-     SSL_SSLV3,
-     SSL_NOT_EXP | SSL_LOW,
-     SSL_HANDSHAKE_MAC_DEFAULT | TLS1_PRF,
-     56,
-     56,
-     },
-
-/* Cipher 1F */
-    {
-     1,
-     SSL3_TXT_KRB5_DES_192_CBC3_SHA,
-     SSL3_CK_KRB5_DES_192_CBC3_SHA,
-     SSL_kKRB5,
-     SSL_aKRB5,
-     SSL_3DES,
-     SSL_SHA1,
-     SSL_SSLV3,
-     SSL_NOT_EXP | SSL_HIGH | SSL_FIPS,
-     SSL_HANDSHAKE_MAC_DEFAULT | TLS1_PRF,
-     112,
-     168,
-     },
-
-/* Cipher 20 */
-    {
-     1,
-     SSL3_TXT_KRB5_RC4_128_SHA,
-     SSL3_CK_KRB5_RC4_128_SHA,
-     SSL_kKRB5,
-     SSL_aKRB5,
-     SSL_RC4,
-     SSL_SHA1,
-     SSL_SSLV3,
-     SSL_NOT_EXP | SSL_MEDIUM,
-     SSL_HANDSHAKE_MAC_DEFAULT | TLS1_PRF,
-     128,
-     128,
-     },
-
-/* Cipher 21 */
-    {
-     1,
-     SSL3_TXT_KRB5_IDEA_128_CBC_SHA,
-     SSL3_CK_KRB5_IDEA_128_CBC_SHA,
-     SSL_kKRB5,
-     SSL_aKRB5,
-     SSL_IDEA,
-     SSL_SHA1,
-     SSL_SSLV3,
-     SSL_NOT_EXP | SSL_MEDIUM,
-     SSL_HANDSHAKE_MAC_DEFAULT | TLS1_PRF,
-     128,
-     128,
-     },
-
-/* Cipher 22 */
-    {
-     1,
-     SSL3_TXT_KRB5_DES_64_CBC_MD5,
-     SSL3_CK_KRB5_DES_64_CBC_MD5,
-     SSL_kKRB5,
-     SSL_aKRB5,
-     SSL_DES,
-     SSL_MD5,
-     SSL_SSLV3,
-     SSL_NOT_EXP | SSL_LOW,
-     SSL_HANDSHAKE_MAC_DEFAULT | TLS1_PRF,
-     56,
-     56,
-     },
-
-/* Cipher 23 */
-    {
-     1,
-     SSL3_TXT_KRB5_DES_192_CBC3_MD5,
-     SSL3_CK_KRB5_DES_192_CBC3_MD5,
-     SSL_kKRB5,
-     SSL_aKRB5,
-     SSL_3DES,
-     SSL_MD5,
-     SSL_SSLV3,
-     SSL_NOT_EXP | SSL_HIGH,
-     SSL_HANDSHAKE_MAC_DEFAULT | TLS1_PRF,
-     112,
-     168,
-     },
-
-/* Cipher 24 */
-    {
-     1,
-     SSL3_TXT_KRB5_RC4_128_MD5,
-     SSL3_CK_KRB5_RC4_128_MD5,
-     SSL_kKRB5,
-     SSL_aKRB5,
-     SSL_RC4,
-     SSL_MD5,
-     SSL_SSLV3,
-     SSL_NOT_EXP | SSL_MEDIUM,
-     SSL_HANDSHAKE_MAC_DEFAULT | TLS1_PRF,
-     128,
-     128,
-     },
-
-/* Cipher 25 */
-    {
-     1,
-     SSL3_TXT_KRB5_IDEA_128_CBC_MD5,
-     SSL3_CK_KRB5_IDEA_128_CBC_MD5,
-     SSL_kKRB5,
-     SSL_aKRB5,
-     SSL_IDEA,
-     SSL_MD5,
-     SSL_SSLV3,
-     SSL_NOT_EXP | SSL_MEDIUM,
-     SSL_HANDSHAKE_MAC_DEFAULT | TLS1_PRF,
-     128,
-     128,
-     },
-
-/* Cipher 26 */
-    {
-     1,
-     SSL3_TXT_KRB5_DES_40_CBC_SHA,
-     SSL3_CK_KRB5_DES_40_CBC_SHA,
-     SSL_kKRB5,
-     SSL_aKRB5,
-     SSL_DES,
-     SSL_SHA1,
-     SSL_SSLV3,
-     SSL_EXPORT | SSL_EXP40,
-     SSL_HANDSHAKE_MAC_DEFAULT | TLS1_PRF,
-     40,
-     56,
-     },
-
-/* Cipher 27 */
-    {
-     1,
-     SSL3_TXT_KRB5_RC2_40_CBC_SHA,
-     SSL3_CK_KRB5_RC2_40_CBC_SHA,
-     SSL_kKRB5,
-     SSL_aKRB5,
-     SSL_RC2,
-     SSL_SHA1,
-     SSL_SSLV3,
-     SSL_EXPORT | SSL_EXP40,
-     SSL_HANDSHAKE_MAC_DEFAULT | TLS1_PRF,
-     40,
-     128,
-     },
-
-/* Cipher 28 */
-    {
-     1,
-     SSL3_TXT_KRB5_RC4_40_SHA,
-     SSL3_CK_KRB5_RC4_40_SHA,
-     SSL_kKRB5,
-     SSL_aKRB5,
-     SSL_RC4,
-     SSL_SHA1,
-     SSL_SSLV3,
-     SSL_EXPORT | SSL_EXP40,
-     SSL_HANDSHAKE_MAC_DEFAULT | TLS1_PRF,
-     40,
-     128,
-     },
-
-/* Cipher 29 */
-    {
-     1,
-     SSL3_TXT_KRB5_DES_40_CBC_MD5,
-     SSL3_CK_KRB5_DES_40_CBC_MD5,
-     SSL_kKRB5,
-     SSL_aKRB5,
-     SSL_DES,
-     SSL_MD5,
-     SSL_SSLV3,
-     SSL_EXPORT | SSL_EXP40,
-     SSL_HANDSHAKE_MAC_DEFAULT | TLS1_PRF,
-     40,
-     56,
-     },
-
-/* Cipher 2A */
-    {
-     1,
-     SSL3_TXT_KRB5_RC2_40_CBC_MD5,
-     SSL3_CK_KRB5_RC2_40_CBC_MD5,
-     SSL_kKRB5,
-     SSL_aKRB5,
-     SSL_RC2,
-     SSL_MD5,
-     SSL_SSLV3,
-     SSL_EXPORT | SSL_EXP40,
-     SSL_HANDSHAKE_MAC_DEFAULT | TLS1_PRF,
-     40,
-     128,
-     },
-
-/* Cipher 2B */
-    {
-     1,
-     SSL3_TXT_KRB5_RC4_40_MD5,
-     SSL3_CK_KRB5_RC4_40_MD5,
-     SSL_kKRB5,
-     SSL_aKRB5,
-     SSL_RC4,
-     SSL_MD5,
-     SSL_SSLV3,
-     SSL_EXPORT | SSL_EXP40,
-     SSL_HANDSHAKE_MAC_DEFAULT | TLS1_PRF,
-     40,
-     128,
-     },
-#endif                          /* OPENSSL_NO_KRB5 */
 
 /* New AES ciphersuites */
 /* Cipher 2F */
@@ -1839,21 +1612,6 @@ OPENSSL_GLOBAL const SSL_CIPHER ssl3_ciphers[] = {
      256,
      256,
      },
-#ifdef OPENSSL_SSL_DEBUG_BROKEN_PROTOCOL
-    {
-     1,
-     "SCSV",
-     SSL3_CK_SCSV,
-     0,
-     0,
-     0,
-     0,
-     0,
-     0,
-     0,
-     0,
-     0},
-#endif
 
 #ifndef OPENSSL_NO_CAMELLIA
     /* TLS 1.2 Camellia SHA-256 ciphersuites from RFC5932 */
@@ -2049,6 +1807,23 @@ OPENSSL_GLOBAL const SSL_CIPHER ssl3_ciphers[] = {
      256,
      256,
      },
+#endif
+
+#ifdef OPENSSL_SSL_DEBUG_BROKEN_PROTOCOL
+    /* Cipher FF */
+    {
+     1,
+     "SCSV",
+     SSL3_CK_SCSV,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0},
 #endif
 
 #ifndef OPENSSL_NO_EC
@@ -3127,6 +2902,9 @@ void ssl3_free(SSL *s)
 #endif
 
     sk_X509_NAME_pop_free(s->s3->tmp.ca_names, X509_NAME_free);
+    OPENSSL_free(s->s3->tmp.ciphers_raw);
+    OPENSSL_clear_free(s->s3->tmp.pms, s->s3->tmp.pmslen);
+    OPENSSL_free(s->s3->tmp.peer_sigalgs);
     BIO_free(s->s3->handshake_buffer);
     if (s->s3->handshake_dgst)
         ssl3_free_digest_list(s);
@@ -3147,6 +2925,12 @@ void ssl3_clear(SSL *s)
 
     ssl3_cleanup_key_block(s);
     sk_X509_NAME_pop_free(s->s3->tmp.ca_names, X509_NAME_free);
+    OPENSSL_free(s->s3->tmp.ciphers_raw);
+    s->s3->tmp.ciphers_raw = NULL;
+    OPENSSL_clear_free(s->s3->tmp.pms, s->s3->tmp.pmslen);
+    s->s3->tmp.pms = NULL;
+    OPENSSL_free(s->s3->tmp.peer_sigalgs);
+    s->s3->tmp.peer_sigalgs = NULL;
 
 #ifndef OPENSSL_NO_DH
     DH_free(s->s3->tmp.dh);
@@ -3542,7 +3326,7 @@ long ssl3_ctrl(SSL *s, int cmd, long larg, void *parg)
         if (SSL_USE_SIGALGS(s)) {
             if (s->session && s->session->sess_cert) {
                 const EVP_MD *sig;
-                sig = s->session->sess_cert->peer_key->digest;
+                sig = s->s3->tmp.peer_md;
                 if (sig) {
                     *(int *)parg = EVP_MD_type(sig);
                     return 1;
@@ -3612,9 +3396,9 @@ long ssl3_ctrl(SSL *s, int cmd, long larg, void *parg)
          * Apparently we're using a version-flexible SSL_METHOD (not at its
          * highest protocol version).
          */
-        if (s->ctx->method->version == SSLv23_method()->version) {
+        if (s->ctx->method->version == TLS_method()->version) {
 #if TLS_MAX_VERSION != TLS1_2_VERSION
-# error Code needs update for SSLv23_method() support beyond TLS1_2_VERSION.
+# error Code needs update for TLS_method() support beyond TLS1_2_VERSION.
 #endif
             if (!(s->options & SSL_OP_NO_TLSv1_2))
                 return s->version == TLS1_2_VERSION;
@@ -4059,11 +3843,9 @@ SSL_CIPHER *ssl3_choose_cipher(SSL *s, STACK_OF(SSL_CIPHER) *clnt,
     SSL_CIPHER *c, *ret = NULL;
     STACK_OF(SSL_CIPHER) *prio, *allow;
     int i, ii, ok;
-    CERT *cert;
     unsigned long alg_k, alg_a, mask_k, mask_a, emask_k, emask_a;
 
     /* Let's see which ciphers we can support */
-    cert = s->cert;
 
 #if 0
     /*
@@ -4108,11 +3890,11 @@ SSL_CIPHER *ssl3_choose_cipher(SSL *s, STACK_OF(SSL_CIPHER) *clnt,
         if ((c->algorithm_ssl & SSL_TLSV1_2) && !SSL_USE_TLS1_2_CIPHERS(s))
             continue;
 
-        ssl_set_cert_masks(cert, c);
-        mask_k = cert->mask_k;
-        mask_a = cert->mask_a;
-        emask_k = cert->export_mask_k;
-        emask_a = cert->export_mask_a;
+        ssl_set_masks(s, c);
+        mask_k = s->s3->tmp.mask_k;
+        mask_a = s->s3->tmp.mask_a;
+        emask_k = s->s3->tmp.export_mask_k;
+        emask_a = s->s3->tmp.export_mask_a;
 #ifndef OPENSSL_NO_SRP
         if (s->srp_ctx.srp_Mask & SSL_kSRP) {
             mask_k |= SSL_kSRP;
@@ -4122,22 +3904,9 @@ SSL_CIPHER *ssl3_choose_cipher(SSL *s, STACK_OF(SSL_CIPHER) *clnt,
         }
 #endif
 
-#ifdef KSSL_DEBUG
-        /*
-         * fprintf(stderr,"ssl3_choose_cipher %d alg= %lx\n",
-         * i,c->algorithms);
-         */
-#endif                          /* KSSL_DEBUG */
-
         alg_k = c->algorithm_mkey;
         alg_a = c->algorithm_auth;
 
-#ifndef OPENSSL_NO_KRB5
-        if (alg_k & SSL_kKRB5) {
-            if (!kssl_keytab_is_available(s->kssl_ctx))
-                continue;
-        }
-#endif                          /* OPENSSL_NO_KRB5 */
 #ifndef OPENSSL_NO_PSK
         /* with PSK there must be server callback set */
         if ((alg_k & SSL_kPSK) && s->psk_server_callback == NULL)
@@ -4476,4 +4245,27 @@ long ssl_get_algorithm2(SSL *s)
         && alg2 == (SSL_HANDSHAKE_MAC_DEFAULT | TLS1_PRF))
         return SSL_HANDSHAKE_MAC_SHA256 | TLS1_PRF_SHA256;
     return alg2;
+}
+
+/*
+ * Fill a ClientRandom or ServerRandom field of length len. Returns <= 0 on
+ * failure, 1 on success.
+ */
+int ssl_fill_hello_random(SSL *s, int server, unsigned char *result, int len)
+{
+    int send_time = 0;
+
+    if (len < 4)
+        return 0;
+    if (server)
+        send_time = (s->mode & SSL_MODE_SEND_SERVERHELLO_TIME) != 0;
+    else
+        send_time = (s->mode & SSL_MODE_SEND_CLIENTHELLO_TIME) != 0;
+    if (send_time) {
+        unsigned long Time = (unsigned long)time(NULL);
+        unsigned char *p = result;
+        l2n(Time, p);
+        return RAND_bytes(p, len - 4);
+    } else
+        return RAND_bytes(result, len);
 }

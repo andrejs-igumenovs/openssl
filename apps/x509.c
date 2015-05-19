@@ -175,7 +175,7 @@ OPTIONS x509_options[] = {
      "The CA key, must be PEM format; if not in CAfile"},
     {"CAcreateserial", OPT_CACREATESERIAL, '-',
      "Create serial number file if it does not exist"},
-    {"CAserial", OPT_CASERIAL, '<', "Serial file"},
+    {"CAserial", OPT_CASERIAL, 's', "Serial file"},
     {"set_serial", OPT_SET_SERIAL, 's', "Serial number to use"},
     {"text", OPT_TEXT, '-', "Print the certificate in text form"},
     {"C", OPT_C, '-', "Print out C code forms"},
@@ -1021,10 +1021,8 @@ static int x509_certify(X509_STORE *ctx, char *CAfile, const EVP_MD *digest,
     }
     if (sno)
         bs = sno;
-    else if (!(bs = x509_load_serial(CAfile, serialfile, create)))
+    else if ((bs = x509_load_serial(CAfile, serialfile, create)) == NULL)
         goto end;
-
-/*      if (!X509_STORE_add_cert(ctx,x)) goto end;*/
 
     /*
      * NOTE: this certificate can/should be self signed, unless it was a

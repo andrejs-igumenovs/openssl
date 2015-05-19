@@ -62,7 +62,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "cryptlib.h"
+#include "internal/cryptlib.h"
 #include <openssl/conf.h>
 #include <openssl/asn1.h>
 #include <openssl/asn1t.h>
@@ -945,7 +945,7 @@ static void *v2i_IPAddrBlocks(const struct v3_ext_method *method,
         CONF_VALUE *val = sk_CONF_VALUE_value(values, i);
         unsigned char min[ADDR_RAW_BUF_LEN], max[ADDR_RAW_BUF_LEN];
         unsigned afi, *safi = NULL, safi_;
-        const char *addr_chars;
+        const char *addr_chars = NULL;
         int prefixlen, i1, i2, delim, length;
 
         if (!name_cmp(val->name, "IPv4")) {
@@ -1002,7 +1002,7 @@ static void *v2i_IPAddrBlocks(const struct v3_ext_method *method,
          * Check for inheritance.  Not worth additional complexity to
          * optimize this (seldom-used) case.
          */
-        if (!strcmp(s, "inherit")) {
+        if (strcmp(s, "inherit") == 0) {
             if (!v3_addr_add_inherit(addr, afi, safi)) {
                 X509V3err(X509V3_F_V2I_IPADDRBLOCKS,
                           X509V3_R_INVALID_INHERITANCE);

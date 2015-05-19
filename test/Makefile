@@ -5,13 +5,10 @@
 DIR=		test
 TOP=		..
 CC=		cc
-INCLUDES=	-I$(TOP) -I../include -I../crypto/include $(KRB5_INCLUDES) -I$(TOP)/fips
+INCLUDES=	-I$(TOP) -I../include -I../crypto/include -I$(TOP)/fips
 CFLAG=		-g
 MAKEDEPEND=	$(TOP)/util/domd $(TOP) -MD $(MAKEDEPPROG)
 PERL=		perl
-# KRB5 stuff
-KRB5_INCLUDES=
-LIBKRB5=
 
 PEX_LIBS=
 EX_LIBS= #-lnsl -lsocket
@@ -248,7 +245,7 @@ test_x509: ../apps/openssl$(EXE_EXT) tx509 testx509.pem v3-cert1.pem v3-cert2.pe
 	@echo $(START) $@ -- second x509v3 certificate
 	sh ./tx509 v3-cert2.pem
 
-test_rsa: $(RSATEST)$(EXE_EXT) ../apps/openssl$(EXE_EXT) tkey testrsa.pem
+test_rsa: $(RSATEST)$(EXE_EXT) ../apps/openssl$(EXE_EXT) tkey testrsa.pem testrsapub.pem
 	@echo $(START) $@
 	../util/shlib_wrap.sh ./$(RSATEST)
 	@echo $(START) $@ -- private key
@@ -285,7 +282,7 @@ test_bn: $(BNTEST)$(EXE_EXT) $(EXPTEST)$(EXE_EXT) bctest
 	@echo $(START) $@ -- $(EXPTEST)
 	../util/shlib_wrap.sh ./$(EXPTEST)
 
-test_ec: $(ECTEST)$(EXE_EXT) tkey testec-p256.pem
+test_ec: $(ECTEST)$(EXE_EXT) tkey testec-p256.pem testecpub-p256.pem
 	@echo $(START) $@
 	../util/shlib_wrap.sh ./$(ECTEST)
 	@echo $(START) $@ -- private
@@ -309,7 +306,7 @@ test_dh: $(DHTEST)$(EXE_EXT)
 	@echo $(START) $@
 	../util/shlib_wrap.sh ./$(DHTEST)
 
-test_dsa: $(DSATEST)$(EXE_EXT) tkey testdsa.pem
+test_dsa: $(DSATEST)$(EXE_EXT) tkey testdsa.pem testdsapub.pem
 	@echo $(START) $@
 	../util/shlib_wrap.sh ./$(DSATEST)
 	@echo $(START) $@ -- app2_1
@@ -419,14 +416,14 @@ $(DLIBCRYPTO):
 BUILD_CMD=shlib_target=; if [ -n "$(SHARED_LIBS)" ]; then \
 		shlib_target="$(SHLIB_TARGET)"; \
 	fi; \
-	LIBRARIES="$(LIBSSL) $(LIBCRYPTO) $(LIBKRB5)"; \
+	LIBRARIES="$(LIBSSL) $(LIBCRYPTO)"; \
 	$(MAKE) -f $(TOP)/Makefile.shared -e \
 		APPNAME=$$target$(EXE_EXT) OBJECTS="$$target.o $$testutil" \
 		LIBDEPS="$(PEX_LIBS) $$LIBRARIES $(EX_LIBS)" \
 		link_app.$${shlib_target}
 
 BUILD_CMD_STATIC=shlib_target=; \
-	LIBRARIES="$(DLIBSSL) $(DLIBCRYPTO) $(LIBKRB5)"; \
+	LIBRARIES="$(DLIBSSL) $(DLIBCRYPTO)"; \
 	$(MAKE) -f $(TOP)/Makefile.shared -e \
 		APPNAME=$$target$(EXE_EXT) OBJECTS="$$target.o $$testutil" \
 		LIBDEPS="$(PEX_LIBS) $$LIBRARIES $(EX_LIBS)" \
@@ -478,7 +475,7 @@ FIPS_BUILD_CMD=shlib_target=; if [ -n "$(SHARED_LIBS)" ]; then \
 FIPS_CRYPTO_BUILD_CMD=shlib_target=; if [ -n "$(SHARED_LIBS)" ]; then \
 		shlib_target="$(SHLIB_TARGET)"; \
 	fi; \
-	LIBRARIES="$(LIBSSL) $(LIBCRYPTO) $(LIBKRB5)"; \
+	LIBRARIES="$(LIBSSL) $(LIBCRYPTO)"; \
 	if [ -z "$(SHARED_LIBS)" -a -n "$(FIPSCANLIB)" ] ; then \
 		FIPSLD_CC="$(CC)"; CC=$(TOP)/fips/fipsld; export CC FIPSLD_CC; \
 	fi; \
@@ -611,7 +608,7 @@ bntest.o: ../include/openssl/symhacks.h ../include/openssl/x509.h
 bntest.o: ../include/openssl/x509_vfy.h bntest.c
 casttest.o: ../e_os.h ../include/openssl/cast.h ../include/openssl/e_os2.h
 casttest.o: ../include/openssl/opensslconf.h casttest.c
-constant_time_test.o: ../crypto/constant_time_locl.h ../e_os.h
+constant_time_test.o: ../e_os.h ../include/internal/constant_time_locl.h
 constant_time_test.o: ../include/openssl/e_os2.h
 constant_time_test.o: ../include/openssl/opensslconf.h constant_time_test.c
 destest.o: ../include/openssl/des.h ../include/openssl/e_os2.h
@@ -736,20 +733,19 @@ heartbeat_test.o: ../include/openssl/dtls1.h ../include/openssl/e_os2.h
 heartbeat_test.o: ../include/openssl/ec.h ../include/openssl/ecdh.h
 heartbeat_test.o: ../include/openssl/ecdsa.h ../include/openssl/err.h
 heartbeat_test.o: ../include/openssl/evp.h ../include/openssl/hmac.h
-heartbeat_test.o: ../include/openssl/kssl.h ../include/openssl/lhash.h
-heartbeat_test.o: ../include/openssl/obj_mac.h ../include/openssl/objects.h
-heartbeat_test.o: ../include/openssl/opensslconf.h
+heartbeat_test.o: ../include/openssl/lhash.h ../include/openssl/obj_mac.h
+heartbeat_test.o: ../include/openssl/objects.h ../include/openssl/opensslconf.h
 heartbeat_test.o: ../include/openssl/opensslv.h ../include/openssl/ossl_typ.h
 heartbeat_test.o: ../include/openssl/pem.h ../include/openssl/pem2.h
 heartbeat_test.o: ../include/openssl/pkcs7.h ../include/openssl/pqueue.h
 heartbeat_test.o: ../include/openssl/rsa.h ../include/openssl/safestack.h
 heartbeat_test.o: ../include/openssl/sha.h ../include/openssl/srtp.h
 heartbeat_test.o: ../include/openssl/ssl.h ../include/openssl/ssl2.h
-heartbeat_test.o: ../include/openssl/ssl23.h ../include/openssl/ssl3.h
-heartbeat_test.o: ../include/openssl/stack.h ../include/openssl/symhacks.h
-heartbeat_test.o: ../include/openssl/tls1.h ../include/openssl/x509.h
-heartbeat_test.o: ../include/openssl/x509_vfy.h ../ssl/record/record.h
-heartbeat_test.o: ../ssl/ssl_locl.h heartbeat_test.c testutil.h
+heartbeat_test.o: ../include/openssl/ssl3.h ../include/openssl/stack.h
+heartbeat_test.o: ../include/openssl/symhacks.h ../include/openssl/tls1.h
+heartbeat_test.o: ../include/openssl/x509.h ../include/openssl/x509_vfy.h
+heartbeat_test.o: ../ssl/record/record.h ../ssl/ssl_locl.h heartbeat_test.c
+heartbeat_test.o: testutil.h
 hmactest.o: ../e_os.h ../include/openssl/asn1.h ../include/openssl/bio.h
 hmactest.o: ../include/openssl/crypto.h ../include/openssl/e_os2.h
 hmactest.o: ../include/openssl/evp.h ../include/openssl/hmac.h
@@ -844,16 +840,15 @@ ssltest.o: ../include/openssl/e_os2.h ../include/openssl/ec.h
 ssltest.o: ../include/openssl/ecdh.h ../include/openssl/ecdsa.h
 ssltest.o: ../include/openssl/engine.h ../include/openssl/err.h
 ssltest.o: ../include/openssl/evp.h ../include/openssl/hmac.h
-ssltest.o: ../include/openssl/kssl.h ../include/openssl/lhash.h
-ssltest.o: ../include/openssl/obj_mac.h ../include/openssl/objects.h
-ssltest.o: ../include/openssl/opensslconf.h ../include/openssl/opensslv.h
-ssltest.o: ../include/openssl/ossl_typ.h ../include/openssl/pem.h
-ssltest.o: ../include/openssl/pem2.h ../include/openssl/pkcs7.h
-ssltest.o: ../include/openssl/pqueue.h ../include/openssl/rand.h
-ssltest.o: ../include/openssl/rsa.h ../include/openssl/safestack.h
-ssltest.o: ../include/openssl/sha.h ../include/openssl/srp.h
-ssltest.o: ../include/openssl/srtp.h ../include/openssl/ssl.h
-ssltest.o: ../include/openssl/ssl2.h ../include/openssl/ssl23.h
+ssltest.o: ../include/openssl/lhash.h ../include/openssl/obj_mac.h
+ssltest.o: ../include/openssl/objects.h ../include/openssl/opensslconf.h
+ssltest.o: ../include/openssl/opensslv.h ../include/openssl/ossl_typ.h
+ssltest.o: ../include/openssl/pem.h ../include/openssl/pem2.h
+ssltest.o: ../include/openssl/pkcs7.h ../include/openssl/pqueue.h
+ssltest.o: ../include/openssl/rand.h ../include/openssl/rsa.h
+ssltest.o: ../include/openssl/safestack.h ../include/openssl/sha.h
+ssltest.o: ../include/openssl/srp.h ../include/openssl/srtp.h
+ssltest.o: ../include/openssl/ssl.h ../include/openssl/ssl2.h
 ssltest.o: ../include/openssl/ssl3.h ../include/openssl/stack.h
 ssltest.o: ../include/openssl/symhacks.h ../include/openssl/tls1.h
 ssltest.o: ../include/openssl/x509.h ../include/openssl/x509_vfy.h

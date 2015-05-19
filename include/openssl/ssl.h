@@ -145,9 +145,7 @@
 
 # include <openssl/e_os2.h>
 
-# ifndef OPENSSL_NO_COMP
-#  include <openssl/comp.h>
-# endif
+# include <openssl/comp.h>
 # include <openssl/bio.h>
 # ifdef OPENSSL_USE_DEPRECATED
 #  include <openssl/x509.h>
@@ -158,7 +156,6 @@
 # include <openssl/pem.h>
 # include <openssl/hmac.h>
 
-# include <openssl/kssl.h>
 # include <openssl/safestack.h>
 # include <openssl/symhacks.h>
 
@@ -173,41 +170,14 @@ extern "C" {
  */
 # define SSL_SESSION_ASN1_VERSION 0x0001
 
-/* text strings for the ciphers */
-
-/*
- * VRS Additional Kerberos5 entries
- */
-# define SSL_TXT_KRB5_DES_64_CBC_SHA   SSL3_TXT_KRB5_DES_64_CBC_SHA
-# define SSL_TXT_KRB5_DES_192_CBC3_SHA SSL3_TXT_KRB5_DES_192_CBC3_SHA
-# define SSL_TXT_KRB5_RC4_128_SHA      SSL3_TXT_KRB5_RC4_128_SHA
-# define SSL_TXT_KRB5_IDEA_128_CBC_SHA SSL3_TXT_KRB5_IDEA_128_CBC_SHA
-# define SSL_TXT_KRB5_DES_64_CBC_MD5   SSL3_TXT_KRB5_DES_64_CBC_MD5
-# define SSL_TXT_KRB5_DES_192_CBC3_MD5 SSL3_TXT_KRB5_DES_192_CBC3_MD5
-# define SSL_TXT_KRB5_RC4_128_MD5      SSL3_TXT_KRB5_RC4_128_MD5
-# define SSL_TXT_KRB5_IDEA_128_CBC_MD5 SSL3_TXT_KRB5_IDEA_128_CBC_MD5
-
-# define SSL_TXT_KRB5_DES_40_CBC_SHA   SSL3_TXT_KRB5_DES_40_CBC_SHA
-# define SSL_TXT_KRB5_RC2_40_CBC_SHA   SSL3_TXT_KRB5_RC2_40_CBC_SHA
-# define SSL_TXT_KRB5_RC4_40_SHA       SSL3_TXT_KRB5_RC4_40_SHA
-# define SSL_TXT_KRB5_DES_40_CBC_MD5   SSL3_TXT_KRB5_DES_40_CBC_MD5
-# define SSL_TXT_KRB5_RC2_40_CBC_MD5   SSL3_TXT_KRB5_RC2_40_CBC_MD5
-# define SSL_TXT_KRB5_RC4_40_MD5       SSL3_TXT_KRB5_RC4_40_MD5
-
-# define SSL_TXT_KRB5_DES_40_CBC_SHA   SSL3_TXT_KRB5_DES_40_CBC_SHA
-# define SSL_TXT_KRB5_DES_40_CBC_MD5   SSL3_TXT_KRB5_DES_40_CBC_MD5
-# define SSL_TXT_KRB5_DES_64_CBC_SHA   SSL3_TXT_KRB5_DES_64_CBC_SHA
-# define SSL_TXT_KRB5_DES_64_CBC_MD5   SSL3_TXT_KRB5_DES_64_CBC_MD5
-# define SSL_TXT_KRB5_DES_192_CBC3_SHA SSL3_TXT_KRB5_DES_192_CBC3_SHA
-# define SSL_TXT_KRB5_DES_192_CBC3_MD5 SSL3_TXT_KRB5_DES_192_CBC3_MD5
-# define SSL_MAX_KRB5_PRINCIPAL_LENGTH  256
-
 # define SSL_MAX_SSL_SESSION_ID_LENGTH           32
 # define SSL_MAX_SID_CTX_LENGTH                  32
 
 # define SSL_MIN_RSA_MODULUS_LENGTH_IN_BYTES     (512/8)
 # define SSL_MAX_KEY_ARG_LENGTH                  8
 # define SSL_MAX_MASTER_KEY_LENGTH               48
+
+/* text strings for the ciphers */
 
 /* These are used to specify which ciphers to use and not to use */
 
@@ -228,7 +198,6 @@ extern "C" {
 # define SSL_TXT_kDH             "kDH"
 # define SSL_TXT_kEDH            "kEDH"/* alias for kDHE */
 # define SSL_TXT_kDHE            "kDHE"
-# define SSL_TXT_kKRB5           "kKRB5"
 # define SSL_TXT_kECDHr          "kECDHr"
 # define SSL_TXT_kECDHe          "kECDHe"
 # define SSL_TXT_kECDH           "kECDH"
@@ -242,7 +211,6 @@ extern "C" {
 # define SSL_TXT_aDSS            "aDSS"
 # define SSL_TXT_aDH             "aDH"
 # define SSL_TXT_aECDH           "aECDH"
-# define SSL_TXT_aKRB5           "aKRB5"
 # define SSL_TXT_aECDSA          "aECDSA"
 # define SSL_TXT_aPSK            "aPSK"
 # define SSL_TXT_aGOST94 "aGOST94"
@@ -261,7 +229,6 @@ extern "C" {
 # define SSL_TXT_ECDHE           "ECDHE"/* same as "kECDHE:-AECDH" */
 # define SSL_TXT_AECDH           "AECDH"
 # define SSL_TXT_ECDSA           "ECDSA"
-# define SSL_TXT_KRB5            "KRB5"
 # define SSL_TXT_PSK             "PSK"
 # define SSL_TXT_SRP             "SRP"
 
@@ -594,6 +561,7 @@ typedef int (*custom_ext_parse_cb) (SSL *s, unsigned int ext_type,
 # define SSL_CONF_TYPE_STRING            0x1
 # define SSL_CONF_TYPE_FILE              0x2
 # define SSL_CONF_TYPE_DIR               0x3
+# define SSL_CONF_TYPE_NONE              0x4
 
 /*
  * Note: SSL[_CTX]_set_{options,mode} use |= op on the previous value, they
@@ -701,9 +669,6 @@ __owur int SRP_generate_client_master_secret(SSL *s, unsigned char *master_key);
  */
 typedef int (*GEN_SESSION_CB) (const SSL *ssl, unsigned char *id,
                                unsigned int *id_len);
-
-typedef struct ssl_comp_st SSL_COMP;
-
 
 # define SSL_SESS_CACHE_OFF                      0x0000
 # define SSL_SESS_CACHE_CLIENT                   0x0001
@@ -945,7 +910,6 @@ __owur int SSL_extension_supported(unsigned int ext_type);
 # include <openssl/ssl3.h>
 # include <openssl/tls1.h>      /* This is mostly sslv3 with a few tweaks */
 # include <openssl/dtls1.h>     /* Datagram TLS */
-# include <openssl/ssl23.h>
 # include <openssl/srtp.h>      /* Support for the use_srtp extension */
 
 #ifdef  __cplusplus
@@ -975,6 +939,7 @@ extern "C" {
 # define SSL_ST_BEFORE                   0x4000
 # define SSL_ST_OK                       0x03
 # define SSL_ST_RENEGOTIATE              (0x04|SSL_ST_INIT)
+# define SSL_ST_ERR                      0x05
 
 # define SSL_CB_LOOP                     0x01
 # define SSL_CB_EXIT                     0x02
@@ -1444,6 +1409,7 @@ __owur int SSL_CTX_use_PrivateKey_file(SSL_CTX *ctx, const char *file, int type)
 __owur int SSL_CTX_use_certificate_file(SSL_CTX *ctx, const char *file, int type);
 /* PEM type */
 __owur int SSL_CTX_use_certificate_chain_file(SSL_CTX *ctx, const char *file);
+__owur int SSL_use_certificate_chain_file(SSL *ssl, const char *file);
 __owur STACK_OF(X509_NAME) *SSL_load_client_CA_file(const char *file);
 __owur int SSL_add_file_cert_subjects_to_stack(STACK_OF(X509_NAME) *stackCAs,
                                         const char *file);
@@ -1595,12 +1561,16 @@ __owur const SSL_METHOD *SSLv3_server_method(void); /* SSLv3 */
 __owur const SSL_METHOD *SSLv3_client_method(void); /* SSLv3 */
 # endif
 
-__owur const SSL_METHOD *SSLv23_method(void); /* Negotiate highest available SSL/TLS
-                                        * version */
-__owur const SSL_METHOD *SSLv23_server_method(void); /* Negotiate highest available
-                                               * SSL/TLS version */
-__owur const SSL_METHOD *SSLv23_client_method(void); /* Negotiate highest available
-                                               * SSL/TLS version */
+#ifdef OPENSSL_USE_DEPRECATED
+#define SSLv23_method           TLS_method
+#define SSLv23_server_method    TLS_server_method
+#define SSLv23_client_method    TLS_client_method
+#endif
+
+/* Negotiate highest available SSL/TLS version */
+__owur const SSL_METHOD *TLS_method(void);
+__owur const SSL_METHOD *TLS_server_method(void);
+__owur const SSL_METHOD *TLS_client_method(void);
 
 __owur const SSL_METHOD *TLSv1_method(void); /* TLSv1.0 */
 __owur const SSL_METHOD *TLSv1_server_method(void); /* TLSv1.0 */
@@ -1771,7 +1741,6 @@ void SSL_set_tmp_ecdh_callback(SSL *ssl,
                                                 int keylength));
 # endif
 
-# ifndef OPENSSL_NO_COMP
 __owur const COMP_METHOD *SSL_get_current_compression(SSL *s);
 __owur const COMP_METHOD *SSL_get_current_expansion(SSL *s);
 __owur const char *SSL_COMP_get_name(const COMP_METHOD *comp);
@@ -1780,13 +1749,6 @@ __owur STACK_OF(SSL_COMP) *SSL_COMP_set0_compression_methods(STACK_OF(SSL_COMP)
                                                       *meths);
 void SSL_COMP_free_compression_methods(void);
 __owur int SSL_COMP_add_compression_method(int id, COMP_METHOD *cm);
-# else
-__owur const void *SSL_get_current_compression(SSL *s);
-__owur const void *SSL_get_current_expansion(SSL *s);
-__owur const char *SSL_COMP_get_name(const void *comp);
-void *SSL_COMP_get_compression_methods(void);
-__owur int SSL_COMP_add_compression_method(int id, void *cm);
-# endif
 
 const SSL_CIPHER *SSL_CIPHER_find(SSL *ssl, const unsigned char *ptr);
 int SSL_CIPHER_get_cipher_nid(const SSL_CIPHER *c);
@@ -1969,14 +1931,6 @@ void ERR_load_SSL_strings(void);
 # define SSL_F_DTLS1_SEND_SERVER_HELLO                    266
 # define SSL_F_DTLS1_SEND_SERVER_KEY_EXCHANGE             267
 # define SSL_F_DTLS1_WRITE_APP_DATA_BYTES                 268
-# define SSL_F_SSL23_ACCEPT                               115
-# define SSL_F_SSL23_CLIENT_HELLO                         116
-# define SSL_F_SSL23_CONNECT                              117
-# define SSL_F_SSL23_GET_CLIENT_HELLO                     118
-# define SSL_F_SSL23_GET_SERVER_HELLO                     119
-# define SSL_F_SSL23_PEEK                                 237
-# define SSL_F_SSL23_READ                                 120
-# define SSL_F_SSL23_WRITE                                121
 # define SSL_F_SSL3_ACCEPT                                128
 # define SSL_F_SSL3_ADD_CERT_TO_BUF                       296
 # define SSL_F_SSL3_CALLBACK_CTRL                         233
@@ -2067,7 +2021,7 @@ void ERR_load_SSL_strings(void);
 # define SSL_F_SSL_CTX_SET_TRUST                          229
 # define SSL_F_SSL_CTX_USE_CERTIFICATE                    171
 # define SSL_F_SSL_CTX_USE_CERTIFICATE_ASN1               172
-# define SSL_F_SSL_CTX_USE_CERTIFICATE_CHAIN_FILE         220
+# define SSL_F_USE_CERTIFICATE_CHAIN_FILE                 220
 # define SSL_F_SSL_CTX_USE_CERTIFICATE_FILE               173
 # define SSL_F_SSL_CTX_USE_PRIVATEKEY                     174
 # define SSL_F_SSL_CTX_USE_PRIVATEKEY_ASN1                175
@@ -2114,6 +2068,7 @@ void ERR_load_SSL_strings(void);
 # define SSL_F_SSL_SET_SESSION_ID_CONTEXT                 218
 # define SSL_F_SSL_SET_SESSION_TICKET_EXT                 294
 # define SSL_F_SSL_SET_TRUST                              228
+# define SSL_F_SSL_SET_VERSION                            347
 # define SSL_F_SSL_SET_WFD                                196
 # define SSL_F_SSL_SHUTDOWN                               224
 # define SSL_F_SSL_SRP_CTX_INIT                           313
@@ -2248,17 +2203,6 @@ void ERR_load_SSL_strings(void);
 # define SSL_R_INVALID_STATUS_RESPONSE                    328
 # define SSL_R_INVALID_TICKET_KEYS_LENGTH                 325
 # define SSL_R_INVALID_TRUST                              279
-# define SSL_R_KRB5                                       285
-# define SSL_R_KRB5_C_CC_PRINC                            286
-# define SSL_R_KRB5_C_GET_CRED                            287
-# define SSL_R_KRB5_C_INIT                                288
-# define SSL_R_KRB5_C_MK_REQ                              289
-# define SSL_R_KRB5_S_BAD_TICKET                          290
-# define SSL_R_KRB5_S_INIT                                291
-# define SSL_R_KRB5_S_RD_REQ                              292
-# define SSL_R_KRB5_S_TKT_EXPIRED                         293
-# define SSL_R_KRB5_S_TKT_NYV                             294
-# define SSL_R_KRB5_S_TKT_SKEW                            295
 # define SSL_R_LENGTH_MISMATCH                            159
 # define SSL_R_LENGTH_TOO_SHORT                           160
 # define SSL_R_LIBRARY_BUG                                274
@@ -2341,7 +2285,6 @@ void ERR_load_SSL_strings(void);
 # define SSL_R_SRTP_COULD_NOT_ALLOCATE_PROFILES           362
 # define SSL_R_SRTP_PROTECTION_PROFILE_LIST_TOO_LONG      363
 # define SSL_R_SRTP_UNKNOWN_PROTECTION_PROFILE            364
-# define SSL_R_SSL23_DOING_SESSION_ID_REUSE               221
 # define SSL_R_SSL3_EXT_INVALID_ECPOINTFORMAT             321
 # define SSL_R_SSL3_EXT_INVALID_SERVERNAME                319
 # define SSL_R_SSL3_EXT_INVALID_SERVERNAME_TYPE           320

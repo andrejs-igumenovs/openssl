@@ -995,7 +995,7 @@ int main(int argc, char *argv[])
     int print_time = 0;
     clock_t s_time = 0, c_time = 0;
 #ifndef OPENSSL_NO_COMP
-    int comp = 0;
+    int n, comp = 0;
     COMP_METHOD *cm = NULL;
     STACK_OF(SSL_COMP) *ssl_comp_methods = NULL;
 #endif
@@ -1004,7 +1004,6 @@ int main(int argc, char *argv[])
     int fips_mode = 0;
 #endif
     int no_protocol = 0;
-    int n;
 
     SSL_CONF_CTX *s_cctx = NULL, *c_cctx = NULL;
     STACK_OF(OPENSSL_STRING) *conf_args = NULL;
@@ -1059,7 +1058,7 @@ int main(int argc, char *argv[])
     argv++;
 
     while (argc >= 1) {
-        if (!strcmp(*argv, "-F")) {
+        if (strcmp(*argv, "-F") == 0) {
 #ifdef OPENSSL_FIPS
             fips_mode = 1;
 #else
@@ -1373,7 +1372,7 @@ int main(int argc, char *argv[])
     if (comp == COMP_ZLIB)
         cm = COMP_zlib();
     if (cm != NULL) {
-        if (cm->type != NID_undef) {
+        if (COMP_get_type(cm) != NID_undef) {
             if (SSL_COMP_add_compression_method(comp, cm) != 0) {
                 fprintf(stderr, "Failed to add compression method\n");
                 ERR_print_errors_fp(stderr);
@@ -1418,7 +1417,7 @@ int main(int argc, char *argv[])
     if (tls1)
         meth = TLSv1_method();
     else
-        meth = SSLv23_method();
+        meth = TLS_method();
 
     c_ctx = SSL_CTX_new(meth);
     s_ctx = SSL_CTX_new(meth);
@@ -1719,21 +1718,6 @@ int main(int argc, char *argv[])
 
     c_ssl = SSL_new(c_ctx);
     s_ssl = SSL_new(s_ctx);
-
-#ifndef OPENSSL_NO_KRB5
-    if (c_ssl && c_ssl->kssl_ctx) {
-        char localhost[MAXHOSTNAMELEN + 2];
-
-        if (gethostname(localhost, sizeof localhost - 1) == 0) {
-            localhost[sizeof localhost - 1] = '\0';
-            if (strlen(localhost) == sizeof localhost - 1) {
-                BIO_printf(bio_err, "localhost name too long\n");
-                goto end;
-            }
-            kssl_ctx_setstring(c_ssl->kssl_ctx, KSSL_SERVER, localhost);
-        }
-    }
-#endif                          /* OPENSSL_NO_KRB5 */
 
     BIO_printf(bio_stdout, "Doing handshakes=%d bytes=%ld\n", number, bytes);
     for (i = 0; i < number; i++) {

@@ -59,7 +59,7 @@
 
 #include <stdio.h>
 #include <string.h>
-#include "cryptlib.h"
+#include "internal/cryptlib.h"
 #include <openssl/dso.h>
 
 #if !defined(DSO_WIN32)
@@ -310,7 +310,7 @@ static struct file_st *win32_splitter(DSO *dso, const char *filename,
         return (NULL);
     }
 
-    memset(result, 0, sizeof(struct file_st));
+    memset(result, 0, sizeof(*result));
     position = IN_DEVICE;
 
     if ((filename[0] == '\\' && filename[1] == '\\')

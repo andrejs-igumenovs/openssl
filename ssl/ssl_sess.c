@@ -198,7 +198,7 @@ SSL_SESSION *SSL_SESSION_new(void)
         SSLerr(SSL_F_SSL_SESSION_NEW, ERR_R_MALLOC_FAILURE);
         return (0);
     }
-    memset(ss, 0, sizeof(SSL_SESSION));
+    memset(ss, 0, sizeof(*ss));
 
     ss->verify_result = 1;      /* avoid 0 (= X509_V_OK) just in case */
     ss->references = 1;
@@ -772,20 +772,6 @@ int SSL_set_session(SSL *s, SSL_SESSION *session)
             if (!SSL_set_ssl_method(s, meth))
                 return (0);
         }
-#ifndef OPENSSL_NO_KRB5
-        if (s->kssl_ctx && !s->kssl_ctx->client_princ &&
-            session->krb5_client_princ_len > 0) {
-            s->kssl_ctx->client_princ =
-                OPENSSL_malloc(session->krb5_client_princ_len + 1);
-            if (s->kssl_ctx->client_princ == NULL) {
-                SSLerr(SSL_F_SSL_SET_SESSION, ERR_R_MALLOC_FAILURE);
-                return (0);
-            }
-            memcpy(s->kssl_ctx->client_princ, session->krb5_client_princ,
-                   session->krb5_client_princ_len);
-            s->kssl_ctx->client_princ[session->krb5_client_princ_len] = '\0';
-        }
-#endif                          /* OPENSSL_NO_KRB5 */
 
         /* CRYPTO_w_lock(CRYPTO_LOCK_SSL); */
         CRYPTO_add(&session->references, 1, CRYPTO_LOCK_SSL_SESSION);

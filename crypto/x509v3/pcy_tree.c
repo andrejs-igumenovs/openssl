@@ -57,7 +57,7 @@
  *
  */
 
-#include "cryptlib.h"
+#include "internal/cryptlib.h"
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 
@@ -235,14 +235,11 @@ static int tree_init(X509_POLICY_TREE **ptree, STACK_OF(X509) *certs,
         return 0;
     }
 
-    memset(tree->levels, 0, n * sizeof(X509_POLICY_LEVEL));
-
+    memset(tree->levels, 0, sizeof(*tree->levels) * n);
     tree->nlevel = n;
-
     level = tree->levels;
 
     /* Root data: initialize to anyPolicy */
-
     data = policy_data_new(NULL, OBJ_nid2obj(NID_any_policy), 0);
 
     if (!data || !level_add_node(level, data, NULL, tree))
@@ -535,7 +532,7 @@ static int tree_calculate_authority_set(X509_POLICY_TREE *tree,
          * If no anyPolicy node on this this level it can't appear on lower
          * levels so end search.
          */
-        if (!(anyptr = curr->anyPolicy))
+        if ((anyptr = curr->anyPolicy) == NULL)
             break;
         curr++;
         for (j = 0; j < sk_X509_POLICY_NODE_num(curr->nodes); j++) {

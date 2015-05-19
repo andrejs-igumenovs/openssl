@@ -345,7 +345,8 @@ static int ssl_srp_verify_param_cb(SSL *s, void *arg)
 {
     SRP_ARG *srp_arg = (SRP_ARG *)arg;
     BIGNUM *N = NULL, *g = NULL;
-    if (!(N = SSL_get_srp_N(s)) || !(g = SSL_get_srp_g(s)))
+
+    if (((N = SSL_get_srp_N(s)) == NULL) || ((g = SSL_get_srp_g(s)) == NULL))
         return 0;
     if (srp_arg->debug || srp_arg->msg || srp_arg->amp == 1) {
         BIO_printf(bio_err, "SRP parameters:\n");
@@ -473,7 +474,7 @@ typedef enum OPTION_choice {
     OPT_TLS1_2, OPT_TLS1_1, OPT_TLS1, OPT_DTLS, OPT_DTLS1,
     OPT_DTLS1_2, OPT_TIMEOUT, OPT_MTU, OPT_KEYFORM, OPT_PASS,
     OPT_CERT_CHAIN, OPT_CAPATH, OPT_CHAINCAPATH, OPT_VERIFYCAPATH,
-    OPT_KEY, OPT_RECONNECT, OPT_BUILD_CHAIN, OPT_CAFILE, OPT_KRB5SVC,
+    OPT_KEY, OPT_RECONNECT, OPT_BUILD_CHAIN, OPT_CAFILE,
     OPT_CHAINCAFILE, OPT_VERIFYCAFILE, OPT_NEXTPROTONEG, OPT_ALPN,
     OPT_SERVERINFO, OPT_STARTTLS, OPT_SERVERNAME, OPT_JPAKE,
     OPT_USE_SRTP, OPT_KEYMATEXPORT, OPT_KEYMATEXPORTLEN, OPT_SMTPHOST,
@@ -549,9 +550,6 @@ OPTIONS s_client_options[] = {
 # ifndef OPENSSL_NO_JPAKE
     {"jpake", OPT_JPAKE, 's', "JPAKE secret to use"},
 # endif
-#endif
-#ifndef OPENSSL_NO_KRB5
-    {"krb5svc", OPT_KRB5SVC, 's', "Kerberos service name"},
 #endif
 #ifndef OPENSSL_NO_SRP
     {"srpuser", OPT_SRPUSER, 's', "SRP authentification for 'user'"},
@@ -638,7 +636,7 @@ int s_client_main(int argc, char **argv)
     SSL_CONF_CTX *cctx = NULL;
     STACK_OF(OPENSSL_STRING) *ssl_args = NULL;
     STACK_OF(X509_CRL) *crls = NULL;
-    const SSL_METHOD *meth = SSLv23_client_method();
+    const SSL_METHOD *meth = TLS_client_method();
     char *CApath = NULL, *CAfile = NULL, *cbuf = NULL, *sbuf = NULL, *mbuf =
         NULL;
     char *cert_file = NULL, *key_file = NULL, *chain_file = NULL, *prog;
@@ -665,10 +663,6 @@ int s_client_main(int argc, char **argv)
     long socket_mtu = 0, randamt = 0;
     unsigned short port = PORT;
     OPTION_CHOICE o;
-#ifndef OPENSSL_NO_KRB5
-    KSSL_CTX *kctx;
-    const char *krb5svc = NULL;
-#endif
 #ifndef OPENSSL_NO_ENGINE
     ENGINE *ssl_client_engine = NULL;
 #endif
@@ -828,11 +822,6 @@ int s_client_main(int argc, char **argv)
         case OPT_NOCMDS:
             cmdletters = 0;
             break;
-        case OPT_KRB5SVC:
-#ifndef OPENSSL_NO_KRB5
-            krb5svc = opt_arg();
-#endif
-            break;
         case OPT_ENGINE:
             e = setup_engine(opt_arg(), 1);
             break;
@@ -935,6 +924,13 @@ int s_client_main(int argc, char **argv)
         case OPT_SRP_MOREGROUPS:
             srp_arg.amp = 1;
             meth = TLSv1_client_method();
+            break;
+#else
+        case OPT_SRPUSER:
+        case OPT_SRPPASS:
+        case OPT_SRP_STRENGTH:
+        case OPT_SRP_LATEUSER:
+        case OPT_SRP_MOREGROUPS:
             break;
 #endif
 #ifndef OPENSSL_NO_SSL3
@@ -1332,14 +1328,6 @@ int s_client_main(int argc, char **argv)
         }
     }
 #endif
-#ifndef OPENSSL_NO_KRB5
-    if (con && (kctx = kssl_ctx_new()) != NULL) {
-        SSL_set0_kssl_ctx(con, kctx);
-        kssl_ctx_setstring(kctx, KSSL_SERVER, host);
-        if (krb5svc)
-            kssl_ctx_setstring(kctx, KSSL_SERVICE, krb5svc);
-    }
-#endif                          /* OPENSSL_NO_KRB5 */
 
  re_start:
 #ifdef NO_SYS_UN_H

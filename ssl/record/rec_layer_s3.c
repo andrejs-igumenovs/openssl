@@ -155,7 +155,7 @@ void RECORD_LAYER_clear(RECORD_LAYER *rl)
     rlen = SSL3_BUFFER_get_len(&rl->rbuf);
     wp = SSL3_BUFFER_get_buf(&rl->wbuf);
     wlen = SSL3_BUFFER_get_len(&rl->wbuf);
-    memset(rl, 0, sizeof (RECORD_LAYER));
+    memset(rl, 0, sizeof(*rl));
     SSL3_BUFFER_set_buf(&rl->rbuf, rp);
     SSL3_BUFFER_set_len(&rl->rbuf, rlen);
     SSL3_BUFFER_set_buf(&rl->wbuf, wp);
@@ -1110,6 +1110,35 @@ int ssl3_read_bytes(SSL *s, int type, unsigned char *buf, int len, int peek)
      */
 
     /*
+     * Lets just double check that we've not got an SSLv2 record
+     */
+    if (rr->rec_version == SSL2_VERSION) {
+        /*
+         * Should never happen. ssl3_get_record() should only give us an SSLv2
+         * record back if this is the first packet and we are looking for an
+         * initial ClientHello. Therefore |type| should always be equal to
+         * |rr->type|. If not then something has gone horribly wrong
+         */
+        al = SSL_AD_INTERNAL_ERROR;
+        SSLerr(SSL_F_SSL3_READ_BYTES, ERR_R_INTERNAL_ERROR);
+        goto f_err;
+    }
+
+    if(s->method->version == TLS_ANY_VERSION
+            && (s->server || rr->type != SSL3_RT_ALERT)) {
+        /*
+         * If we've got this far and still haven't decided on what version
+         * we're using then this must be a client side alert we're dealing with
+         * (we don't allow heartbeats yet). We shouldn't be receiving anything
+         * other than a ClientHello if we are a server.
+         */
+        s->version = rr->rec_version;
+        al = SSL_AD_UNEXPECTED_MESSAGE;
+        SSLerr(SSL_F_SSL3_READ_BYTES, SSL_R_UNEXPECTED_MESSAGE);
+        goto f_err;
+    }
+
+    /*
      * In case of record types for which we have 'fragment' storage, fill
      * that so that we can process the data at a fixed place.
      */
@@ -1464,4 +1493,19 @@ void ssl3_record_sequence_update(unsigned char *seq)
     }
 }
 
+/*
+ * Returns true if the current rrec was sent in SSLv2 backwards compatible
+ * format and false otherwise.
+ */
+int RECORD_LAYER_is_sslv2_record(RECORD_LAYER *rl)
+{
+    return SSL3_RECORD_is_sslv2_record(&rl->rrec);
+}
 
+/*
+ * Returns the length in bytes of the current rrec
+ */
+int RECORD_LAYER_get_rrec_length(RECORD_LAYER *rl)
+{
+    return SSL3_RECORD_get_length(&rl->rrec);
+}

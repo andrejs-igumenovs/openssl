@@ -139,7 +139,6 @@ typedef unsigned int u_int;
 #  include "netdb.h"
 # endif
 
-static struct hostent *GetHostByName(const char *name);
 # if defined(OPENSSL_SYS_WINDOWS) || (defined(OPENSSL_SYS_NETWARE) && !defined(NETWARE_BSDSOCK))
 static void ssl_sock_cleanup(void);
 # endif
@@ -253,7 +252,7 @@ static int init_client_ip(int *sock, const unsigned char ip[4], int port,
     if (!ssl_sock_init())
         return (0);
 
-    memset((char *)&them, 0, sizeof(them));
+    memset(&them, 0, sizeof(them));
     them.sin_family = AF_INET;
     them.sin_port = htons((unsigned short)port);
     addr = (unsigned long)
@@ -309,7 +308,7 @@ int init_client_unix(int *sock, const char *server)
         return (0);
     }
 
-    memset((char *)&them, 0, sizeof(them));
+    memset(&them, 0, sizeof(them));
     them.sun_family = AF_UNIX;
     strcpy(them.sun_path, server);
 
@@ -411,7 +410,7 @@ static int init_server_long(int *sock, int port, char *ip, int type)
     if (!ssl_sock_init())
         return (0);
 
-    memset((char *)&server, 0, sizeof(server));
+    memset(&server, 0, sizeof(server));
     server.sin_family = AF_INET;
     server.sin_port = htons((unsigned short)port);
     if (ip == NULL)
@@ -476,7 +475,7 @@ static int init_server_unix(int *sock, const char *path)
     if (s == INVALID_SOCKET)
         goto err;
 
-    memset((char *)&server, 0, sizeof(server));
+    memset(&server, 0, sizeof(server));
     server.sun_family = AF_UNIX;
     strcpy(server.sun_path, path);
 
@@ -519,7 +518,7 @@ static int do_accept(int acc_sock, int *sock, char **host)
  redoit:
 # endif
 
-    memset((char *)&from, 0, sizeof(from));
+    memset(&from, 0, sizeof(from));
     len = sizeof(from);
     /*
      * Note: under VMS with SOCKETSHR the fourth parameter is currently of
@@ -564,7 +563,7 @@ static int do_accept(int acc_sock, int *sock, char **host)
         *host = app_malloc(strlen(h1->h_name) + 1, "copy hostname");
         BUF_strlcpy(*host, h1->h_name, strlen(h1->h_name) + 1);
 
-        h2 = GetHostByName(*host);
+        h2 = gethostbyname(*host);
         if (h2 == NULL) {
             BIO_printf(bio_err, "gethostbyname failure\n");
             closesocket(ret);
@@ -655,7 +654,7 @@ static int host_ip(const char *str, unsigned char ip[4])
         if (!ssl_sock_init())
             return (0);
 
-        he = GetHostByName(str);
+        he = gethostbyname(str);
         if (he == NULL) {
             BIO_printf(bio_err, "gethostbyname failure\n");
             goto err;
@@ -691,53 +690,6 @@ int extract_port(const char *str, unsigned short *port_ptr)
         *port_ptr = ntohs((unsigned short)s->s_port);
     }
     return (1);
-}
-
-# define GHBN_NUM        4
-static struct ghbn_cache_st {
-    char name[128];
-    struct hostent ent;
-    unsigned long order;
-} ghbn_cache[GHBN_NUM];
-
-static unsigned long ghbn_hits = 0L;
-static unsigned long ghbn_miss = 0L;
-
-static struct hostent *GetHostByName(const char *name)
-{
-    struct hostent *ret;
-    int i, lowi = 0;
-    unsigned long low = (unsigned long)-1;
-
-    for (i = 0; i < GHBN_NUM; i++) {
-        if (low > ghbn_cache[i].order) {
-            low = ghbn_cache[i].order;
-            lowi = i;
-        }
-        if (ghbn_cache[i].order > 0) {
-            if (strncmp(name, ghbn_cache[i].name, 128) == 0)
-                break;
-        }
-    }
-    if (i == GHBN_NUM) {        /* no hit */
-        ghbn_miss++;
-        ret = gethostbyname(name);
-        if (ret == NULL)
-            return (NULL);
-        /* else add to cache */
-        if (strlen(name) < sizeof ghbn_cache[0].name) {
-            strcpy(ghbn_cache[lowi].name, name);
-            memcpy((char *)&(ghbn_cache[lowi].ent), ret,
-                   sizeof(struct hostent));
-            ghbn_cache[lowi].order = ghbn_miss + ghbn_hits;
-        }
-        return (ret);
-    } else {
-        ghbn_hits++;
-        ret = &(ghbn_cache[i].ent);
-        ghbn_cache[i].order = ghbn_miss + ghbn_hits;
-        return (ret);
-    }
 }
 
 #endif

@@ -147,7 +147,6 @@
 #endif
 #include <stdio.h>
 #include "ssl_locl.h"
-#include "kssl_lcl.h"
 #include <openssl/objects.h>
 #include <openssl/lhash.h>
 #include <openssl/x509v3.h>
@@ -275,13 +274,9 @@ SSL *SSL_new(SSL_CTX *ctx)
     s = OPENSSL_malloc(sizeof(*s));
     if (s == NULL)
         goto err;
-    memset(s, 0, sizeof(SSL));
+    memset(s, 0, sizeof(*s));
 
     RECORD_LAYER_init(&s->rlayer, s);
-
-#ifndef OPENSSL_NO_KRB5
-    s->kssl_ctx = kssl_ctx_new();
-#endif                          /* OPENSSL_NO_KRB5 */
 
     s->options = ctx->options;
     s->mode = ctx->mode;
@@ -583,11 +578,6 @@ void SSL_free(SSL *s)
     RECORD_LAYER_release(&s->rlayer);
 
     SSL_CTX_free(s->ctx);
-
-#ifndef OPENSSL_NO_KRB5
-    if (s->kssl_ctx != NULL)
-        kssl_ctx_free(s->kssl_ctx);
-#endif                          /* OPENSSL_NO_KRB5 */
 
 #if !defined(OPENSSL_NO_TLSEXT) && !defined(OPENSSL_NO_NEXTPROTONEG)
     OPENSSL_free(s->next_proto_negotiated);
@@ -1086,10 +1076,10 @@ long SSL_ctrl(SSL *s, int cmd, long larg, void *parg)
 
     case SSL_CTRL_GET_RAW_CIPHERLIST:
         if (parg) {
-            if (s->cert->ciphers_raw == NULL)
+            if (s->s3->tmp.ciphers_raw == NULL)
                 return 0;
-            *(unsigned char **)parg = s->cert->ciphers_raw;
-            return (int)s->cert->ciphers_rawlen;
+            *(unsigned char **)parg = s->s3->tmp.ciphers_raw;
+            return (int)s->s3->tmp.ciphers_rawlen;
         } else
             return ssl_put_cipher_by_char(s, NULL, NULL);
     case SSL_CTRL_GET_EXTMS_SUPPORT:
@@ -1404,160 +1394,6 @@ char *SSL_get_shared_ciphers(const SSL *s, char *buf, int len)
     return (buf);
 }
 
-int ssl_cipher_list_to_bytes(SSL *s, STACK_OF(SSL_CIPHER) *sk,
-                             unsigned char *p,
-                             int (*put_cb) (const SSL_CIPHER *,
-                                            unsigned char *))
-{
-    int i, j = 0;
-    SSL_CIPHER *c;
-    unsigned char *q;
-    int empty_reneg_info_scsv = !s->renegotiate;
-    /* Set disabled masks for this session */
-    ssl_set_client_disabled(s);
-
-    if (sk == NULL)
-        return (0);
-    q = p;
-    if (put_cb == NULL)
-        put_cb = s->method->put_cipher_by_char;
-
-    for (i = 0; i < sk_SSL_CIPHER_num(sk); i++) {
-        c = sk_SSL_CIPHER_value(sk, i);
-        /* Skip disabled ciphers */
-        if (ssl_cipher_disabled(s, c, SSL_SECOP_CIPHER_SUPPORTED))
-            continue;
-#ifdef OPENSSL_SSL_DEBUG_BROKEN_PROTOCOL
-        if (c->id == SSL3_CK_SCSV) {
-            if (!empty_reneg_info_scsv)
-                continue;
-            else
-                empty_reneg_info_scsv = 0;
-        }
-#endif
-        j = put_cb(c, p);
-        p += j;
-    }
-    /*
-     * If p == q, no ciphers; caller indicates an error. Otherwise, add
-     * applicable SCSVs.
-     */
-    if (p != q) {
-        if (empty_reneg_info_scsv) {
-            static SSL_CIPHER scsv = {
-                0, NULL, SSL3_CK_SCSV, 0, 0, 0, 0, 0, 0, 0, 0, 0
-            };
-            j = put_cb(&scsv, p);
-            p += j;
-#ifdef OPENSSL_RI_DEBUG
-            fprintf(stderr,
-                    "TLS_EMPTY_RENEGOTIATION_INFO_SCSV sent by client\n");
-#endif
-        }
-        if (s->mode & SSL_MODE_SEND_FALLBACK_SCSV) {
-            static SSL_CIPHER scsv = {
-                0, NULL, SSL3_CK_FALLBACK_SCSV, 0, 0, 0, 0, 0, 0, 0, 0, 0
-            };
-            j = put_cb(&scsv, p);
-            p += j;
-        }
-    }
-
-    return (p - q);
-}
-
-STACK_OF(SSL_CIPHER) *ssl_bytes_to_cipher_list(SSL *s, unsigned char *p,
-                                               int num,
-                                               STACK_OF(SSL_CIPHER) **skp)
-{
-    const SSL_CIPHER *c;
-    STACK_OF(SSL_CIPHER) *sk;
-    int i, n;
-
-    if (s->s3)
-        s->s3->send_connection_binding = 0;
-
-    n = ssl_put_cipher_by_char(s, NULL, NULL);
-    if (n == 0 || (num % n) != 0) {
-        SSLerr(SSL_F_SSL_BYTES_TO_CIPHER_LIST,
-               SSL_R_ERROR_IN_RECEIVED_CIPHER_LIST);
-        return (NULL);
-    }
-    if ((skp == NULL) || (*skp == NULL))
-        sk = sk_SSL_CIPHER_new_null(); /* change perhaps later */
-    else {
-        sk = *skp;
-        sk_SSL_CIPHER_zero(sk);
-    }
-
-    OPENSSL_free(s->cert->ciphers_raw);
-    s->cert->ciphers_raw = BUF_memdup(p, num);
-    if (s->cert->ciphers_raw == NULL) {
-        SSLerr(SSL_F_SSL_BYTES_TO_CIPHER_LIST, ERR_R_MALLOC_FAILURE);
-        goto err;
-    }
-    s->cert->ciphers_rawlen = (size_t)num;
-
-    for (i = 0; i < num; i += n) {
-        /* Check for TLS_EMPTY_RENEGOTIATION_INFO_SCSV */
-        if (s->s3 && (n != 3 || !p[0]) &&
-            (p[n - 2] == ((SSL3_CK_SCSV >> 8) & 0xff)) &&
-            (p[n - 1] == (SSL3_CK_SCSV & 0xff))) {
-            /* SCSV fatal if renegotiating */
-            if (s->renegotiate) {
-                SSLerr(SSL_F_SSL_BYTES_TO_CIPHER_LIST,
-                       SSL_R_SCSV_RECEIVED_WHEN_RENEGOTIATING);
-                ssl3_send_alert(s, SSL3_AL_FATAL, SSL_AD_HANDSHAKE_FAILURE);
-                goto err;
-            }
-            s->s3->send_connection_binding = 1;
-            p += n;
-#ifdef OPENSSL_RI_DEBUG
-            fprintf(stderr, "SCSV received by server\n");
-#endif
-            continue;
-        }
-
-        /* Check for TLS_FALLBACK_SCSV */
-        if ((n != 3 || !p[0]) &&
-            (p[n - 2] == ((SSL3_CK_FALLBACK_SCSV >> 8) & 0xff)) &&
-            (p[n - 1] == (SSL3_CK_FALLBACK_SCSV & 0xff))) {
-            /*
-             * The SCSV indicates that the client previously tried a higher
-             * version. Fail if the current version is an unexpected
-             * downgrade.
-             */
-            if (!SSL_ctrl(s, SSL_CTRL_CHECK_PROTO_VERSION, 0, NULL)) {
-                SSLerr(SSL_F_SSL_BYTES_TO_CIPHER_LIST,
-                       SSL_R_INAPPROPRIATE_FALLBACK);
-                if (s->s3)
-                    ssl3_send_alert(s, SSL3_AL_FATAL,
-                                    SSL_AD_INAPPROPRIATE_FALLBACK);
-                goto err;
-            }
-            p += n;
-            continue;
-        }
-
-        c = ssl_get_cipher_by_char(s, p);
-        p += n;
-        if (c != NULL) {
-            if (!sk_SSL_CIPHER_push(sk, c)) {
-                SSLerr(SSL_F_SSL_BYTES_TO_CIPHER_LIST, ERR_R_MALLOC_FAILURE);
-                goto err;
-            }
-        }
-    }
-
-    if (skp != NULL)
-        *skp = sk;
-    return (sk);
- err:
-    if ((skp == NULL) || (*skp == NULL))
-        sk_SSL_CIPHER_free(sk);
-    return (NULL);
-}
-
 #ifndef OPENSSL_NO_TLSEXT
 /** return a servername extension value if provided in Client Hello, or NULL.
  * So far, only host_name types are defined (RFC 3546).
@@ -1848,7 +1684,7 @@ SSL_CTX *SSL_CTX_new(const SSL_METHOD *meth)
     if (ret == NULL)
         goto err;
 
-    memset(ret, 0, sizeof(SSL_CTX));
+    memset(ret, 0, sizeof(*ret));
 
     ret->method = meth;
 
@@ -1866,7 +1702,7 @@ SSL_CTX *SSL_CTX_new(const SSL_METHOD *meth)
     ret->get_session_cb = 0;
     ret->generate_session_id = 0;
 
-    memset((char *)&ret->stats, 0, sizeof(ret->stats));
+    memset(&ret->stats, 0, sizeof(ret->stats));
 
     ret->references = 1;
     ret->quiet_shutdown = 0;
@@ -2097,9 +1933,11 @@ void SSL_set_cert_cb(SSL *s, int (*cb) (SSL *ssl, void *arg), void *arg)
     ssl_cert_set_cert_cb(s->cert, cb, arg);
 }
 
-void ssl_set_cert_masks(CERT *c, const SSL_CIPHER *cipher)
+void ssl_set_masks(SSL *s, const SSL_CIPHER *cipher)
 {
     CERT_PKEY *cpk;
+    CERT *c = s->cert;
+    int *pvalid = s->s3->tmp.valid_flags;
     int rsa_enc, rsa_tmp, rsa_sign, dh_tmp, dh_rsa, dh_dsa, dsa_sign;
     int rsa_enc_export, dh_rsa_export, dh_dsa_export;
     int rsa_tmp_export, dh_tmp_export, kl;
@@ -2136,22 +1974,21 @@ void ssl_set_cert_masks(CERT *c, const SSL_CIPHER *cipher)
     have_ecdh_tmp = (c->ecdh_tmp || c->ecdh_tmp_cb || c->ecdh_tmp_auto);
 #endif
     cpk = &(c->pkeys[SSL_PKEY_RSA_ENC]);
-    rsa_enc = cpk->valid_flags & CERT_PKEY_VALID;
+    rsa_enc = pvalid[SSL_PKEY_RSA_ENC] & CERT_PKEY_VALID;
     rsa_enc_export = (rsa_enc && EVP_PKEY_size(cpk->privatekey) * 8 <= kl);
     cpk = &(c->pkeys[SSL_PKEY_RSA_SIGN]);
-    rsa_sign = cpk->valid_flags & CERT_PKEY_SIGN;
+    rsa_sign = pvalid[SSL_PKEY_RSA_SIGN] & CERT_PKEY_SIGN;
     cpk = &(c->pkeys[SSL_PKEY_DSA_SIGN]);
-    dsa_sign = cpk->valid_flags & CERT_PKEY_SIGN;
+    dsa_sign = pvalid[SSL_PKEY_DSA_SIGN] & CERT_PKEY_SIGN;
     cpk = &(c->pkeys[SSL_PKEY_DH_RSA]);
-    dh_rsa = cpk->valid_flags & CERT_PKEY_VALID;
+    dh_rsa = pvalid[SSL_PKEY_DH_RSA] & CERT_PKEY_VALID;
     dh_rsa_export = (dh_rsa && EVP_PKEY_size(cpk->privatekey) * 8 <= kl);
     cpk = &(c->pkeys[SSL_PKEY_DH_DSA]);
-/* FIX THIS EAY EAY EAY */
-    dh_dsa = cpk->valid_flags & CERT_PKEY_VALID;
+    dh_dsa = pvalid[SSL_PKEY_DH_DSA] & CERT_PKEY_VALID;
     dh_dsa_export = (dh_dsa && EVP_PKEY_size(cpk->privatekey) * 8 <= kl);
     cpk = &(c->pkeys[SSL_PKEY_ECC]);
 #ifndef OPENSSL_NO_EC
-    have_ecc_cert = cpk->valid_flags & CERT_PKEY_VALID;
+    have_ecc_cert = pvalid[SSL_PKEY_ECC] & CERT_PKEY_VALID;
 #endif
     mask_k = 0;
     mask_a = 0;
@@ -2213,13 +2050,6 @@ void ssl_set_cert_masks(CERT *c, const SSL_CIPHER *cipher)
     mask_a |= SSL_aNULL;
     emask_a |= SSL_aNULL;
 
-#ifndef OPENSSL_NO_KRB5
-    mask_k |= SSL_kKRB5;
-    mask_a |= SSL_aKRB5;
-    emask_k |= SSL_kKRB5;
-    emask_a |= SSL_aKRB5;
-#endif
-
     /*
      * An ECC certificate may be usable for ECDH and/or ECDSA cipher suites
      * depending on the key usage extension.
@@ -2234,7 +2064,7 @@ void ssl_set_cert_masks(CERT *c, const SSL_CIPHER *cipher)
             (x->ex_kusage & X509v3_KU_KEY_AGREEMENT) : 1;
         ecdsa_ok = (x->ex_flags & EXFLAG_KUSAGE) ?
             (x->ex_kusage & X509v3_KU_DIGITAL_SIGNATURE) : 1;
-        if (!(cpk->valid_flags & CERT_PKEY_SIGN))
+        if (!(pvalid[SSL_PKEY_ECC] & CERT_PKEY_SIGN))
             ecdsa_ok = 0;
         ecc_pkey = X509_get_pubkey(x);
         ecc_pkey_size = (ecc_pkey != NULL) ? EVP_PKEY_bits(ecc_pkey) : 0;
@@ -2284,11 +2114,10 @@ void ssl_set_cert_masks(CERT *c, const SSL_CIPHER *cipher)
     emask_a |= SSL_aPSK;
 #endif
 
-    c->mask_k = mask_k;
-    c->mask_a = mask_a;
-    c->export_mask_k = emask_k;
-    c->export_mask_a = emask_a;
-    c->valid = 1;
+    s->s3->tmp.mask_k = mask_k;
+    s->s3->tmp.mask_a = mask_a;
+    s->s3->tmp.export_mask_k = emask_k;
+    s->s3->tmp.export_mask_a = emask_a;
 }
 
 /* This handy macro borrowed from crypto/x509v3/v3_purp.c */
@@ -2375,7 +2204,7 @@ static int ssl_get_server_cert_index(const SSL *s)
     return idx;
 }
 
-CERT_PKEY *ssl_get_server_send_pkey(const SSL *s)
+CERT_PKEY *ssl_get_server_send_pkey(SSL *s)
 {
     CERT *c;
     int i;
@@ -2383,7 +2212,7 @@ CERT_PKEY *ssl_get_server_send_pkey(const SSL *s)
     c = s->cert;
     if (!s->s3 || !s->s3->tmp.new_cipher)
         return NULL;
-    ssl_set_cert_masks(c, s->s3->tmp.new_cipher);
+    ssl_set_masks(s, s->s3->tmp.new_cipher);
 
 #ifdef OPENSSL_SSL_DEBUG_BROKEN_PROTOCOL
     /*
@@ -2440,7 +2269,7 @@ EVP_PKEY *ssl_get_sign_pkey(SSL *s, const SSL_CIPHER *cipher,
         return (NULL);
     }
     if (pmd)
-        *pmd = c->pkeys[idx].digest;
+        *pmd = s->s3->tmp.md[idx];
     return c->pkeys[idx].privatekey;
 }
 
@@ -2878,32 +2707,23 @@ const SSL_CIPHER *SSL_get_current_cipher(const SSL *s)
     return (NULL);
 }
 
-#ifdef OPENSSL_NO_COMP
-const void *SSL_get_current_compression(SSL *s)
-{
-    return NULL;
-}
-
-const void *SSL_get_current_expansion(SSL *s)
-{
-    return NULL;
-}
-#else
-
 const COMP_METHOD *SSL_get_current_compression(SSL *s)
 {
-    if (s->compress != NULL)
-        return (s->compress->meth);
-    return (NULL);
+#ifndef OPENSSL_NO_COMP
+    return s->compress ? COMP_CTX_get_method(s->compress) : NULL;
+#else
+    return NULL;
+#endif
 }
 
 const COMP_METHOD *SSL_get_current_expansion(SSL *s)
 {
-    if (s->expand != NULL)
-        return (s->expand->meth);
-    return (NULL);
-}
+#ifndef OPENSSL_NO_COMP
+    return s->expand ? COMP_CTX_get_method(s->expand) : NULL;
+#else
+    return NULL;
 #endif
+}
 
 int ssl_init_wbio_buffer(SSL *s, int push)
 {
@@ -3005,15 +2825,6 @@ SSL_CTX *SSL_set_SSL_CTX(SSL *ssl, SSL_CTX *ctx)
     new_cert = ssl_cert_dup(ctx->cert);
     if (new_cert == NULL) {
         return NULL;
-    }
-    /* Preserve any already negotiated parameters */
-    if (ssl->server) {
-        new_cert->peer_sigalgs = ssl->cert->peer_sigalgs;
-        new_cert->peer_sigalgslen = ssl->cert->peer_sigalgslen;
-        ssl->cert->peer_sigalgs = NULL;
-        new_cert->ciphers_raw = ssl->cert->ciphers_raw;
-        new_cert->ciphers_rawlen = ssl->cert->ciphers_rawlen;
-        ssl->cert->ciphers_raw = NULL;
     }
     ssl_cert_free(ssl->cert);
     ssl->cert = new_cert;

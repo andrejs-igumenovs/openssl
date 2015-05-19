@@ -374,6 +374,7 @@ OPTIONS speed_options[] = {
 #ifndef OPENSSL_NO_ENGINE
     {"engine", OPT_ENGINE, 's', "Use engine, possibly a hardware device"},
 #endif
+    {NULL},
 };
 
 #define D_MD2           0
@@ -2327,7 +2328,7 @@ static int do_multi(int multi)
                 continue;
             }
             printf("Got: %s from %d\n", buf, n);
-            if (!strncmp(buf, "+F:", 3)) {
+            if (strncmp(buf, "+F:", 3) == 0) {
                 int alg;
                 int j;
 
@@ -2336,7 +2337,7 @@ static int do_multi(int multi)
                 sstrsep(&p, sep);
                 for (j = 0; j < SIZE_NUM; ++j)
                     results[alg][j] += atof(sstrsep(&p, sep));
-            } else if (!strncmp(buf, "+F2:", 4)) {
+            } else if (strncmp(buf, "+F2:", 4) == 0) {
                 int k;
                 double d;
 
@@ -2357,7 +2358,7 @@ static int do_multi(int multi)
                     rsa_results[k][1] = d;
             }
 # ifndef OPENSSL_NO_DSA
-            else if (!strncmp(buf, "+F3:", 4)) {
+            else if (strncmp(buf, "+F3:", 4) == 0) {
                 int k;
                 double d;
 
@@ -2379,7 +2380,7 @@ static int do_multi(int multi)
             }
 # endif
 # ifndef OPENSSL_NO_EC
-            else if (!strncmp(buf, "+F4:", 4)) {
+            else if (strncmp(buf, "+F4:", 4) == 0) {
                 int k;
                 double d;
 
@@ -2404,7 +2405,7 @@ static int do_multi(int multi)
 # endif
 
 # ifndef OPENSSL_NO_EC
-            else if (!strncmp(buf, "+F5:", 4)) {
+            else if (strncmp(buf, "+F5:", 4) == 0) {
                 int k;
                 double d;
 
@@ -2421,7 +2422,7 @@ static int do_multi(int multi)
             }
 # endif
 
-            else if (!strncmp(buf, "+H:", 3)) {
+            else if (strncmp(buf, "+H:", 3) == 0) {
                 ;
             } else
                 fprintf(stderr, "Unknown type '%s' from child %d\n", buf, n);

@@ -228,8 +228,7 @@ static int s_server_verify = SSL_VERIFY_NONE;
 static int s_server_session_id_context = 1; /* anything will do */
 static const char *s_cert_file = TEST_CERT, *s_key_file =
     NULL, *s_chain_file = NULL;
-static const char *krb5svc = NULL;
-static const char *krb5tab = NULL;
+
 #ifndef OPENSSL_NO_TLSEXT
 static const char *s_cert_file2 = TEST_CERT2, *s_key_file2 = NULL;
 #endif
@@ -631,7 +630,7 @@ static tlsextstatusctx tlscstatp = { NULL, NULL, NULL, 0, -1, 0 };
 static int cert_status_cb(SSL *s, void *arg)
 {
     tlsextstatusctx *srctx = arg;
-    char *host, *port, *path;
+    char *host = NULL, *port = NULL, *path = NULL;
     int use_ssl;
     unsigned char *rspder = NULL;
     int rspderlen;
@@ -833,8 +832,7 @@ typedef enum OPTION_choice {
     OPT_SRTP_PROFILES, OPT_KEYMATEXPORT, OPT_KEYMATEXPORTLEN,
     OPT_S_ENUM,
     OPT_V_ENUM,
-    OPT_X_ENUM,
-    OPT_KRB5SVC, OPT_KRBTAB
+    OPT_X_ENUM
 } OPTION_CHOICE;
 
 OPTIONS s_server_options[] = {
@@ -892,8 +890,6 @@ OPTIONS s_server_options[] = {
     {"jpake", OPT_JPAKE, 's', "JPAKE secret to use"},
 # endif
 #endif
-    {"krb5svc", OPT_KRB5SVC, 's', "Kerberos service name"},
-    {"keytab", OPT_KRBTAB, '<', "Kerberos keytab file"},
 #ifndef OPENSSL_NO_SRP
     {"srpvfile", OPT_SRPVFILE, '<', "The verifier file for SRP"},
     {"srpuserseed", OPT_SRPUSERSEED, 's',
@@ -991,7 +987,7 @@ int s_server_main(int argc, char *argv[])
     ENGINE *e = NULL;
     EVP_PKEY *s_key = NULL, *s_dkey = NULL;
     SSL_CONF_CTX *cctx = NULL;
-    const SSL_METHOD *meth = SSLv23_server_method();
+    const SSL_METHOD *meth = TLS_server_method();
     SSL_EXCERT *exc = NULL;
     STACK_OF(OPENSSL_STRING) *ssl_args = NULL;
     STACK_OF(X509) *s_chain = NULL, *s_dchain = NULL;
@@ -1321,6 +1317,10 @@ int s_server_main(int argc, char *argv[])
             srpuserseed = opt_arg();
             meth = TLSv1_server_method();
             break;
+#else
+        case OPT_SRPVFILE:
+        case OPT_SRPUSERSEED:
+            break;
 #endif
         case OPT_REV:
             rev = 1;
@@ -1336,29 +1336,29 @@ int s_server_main(int argc, char *argv[])
             break;
 #ifndef OPENSSL_NO_SSL3
         case OPT_SSL3:
-            meth = SSLv3_client_method();
+            meth = SSLv3_server_method();
             break;
 #endif
         case OPT_TLS1_2:
-            meth = TLSv1_2_client_method();
+            meth = TLSv1_2_server_method();
             break;
         case OPT_TLS1_1:
-            meth = TLSv1_1_client_method();
+            meth = TLSv1_1_server_method();
             break;
         case OPT_TLS1:
-            meth = TLSv1_client_method();
+            meth = TLSv1_server_method();
             break;
 #ifndef OPENSSL_NO_DTLS1
         case OPT_DTLS:
-            meth = DTLS_client_method();
+            meth = DTLS_server_method();
             socket_type = SOCK_DGRAM;
             break;
         case OPT_DTLS1:
-            meth = DTLSv1_client_method();
+            meth = DTLSv1_server_method();
             socket_type = SOCK_DGRAM;
             break;
         case OPT_DTLS1_2:
-            meth = DTLSv1_2_client_method();
+            meth = DTLSv1_2_server_method();
             socket_type = SOCK_DGRAM;
             break;
         case OPT_TIMEOUT:
@@ -1410,12 +1410,6 @@ int s_server_main(int argc, char *argv[])
         case OPT_JPAKE:
             goto opthelp;
 #endif
-        case OPT_KRB5SVC:
-            krb5svc = opt_arg();
-            break;
-        case OPT_KRBTAB:
-            krb5tab = opt_arg();
-            break;
         case OPT_SRTP_PROFILES:
             srtp_profiles = opt_arg();
             break;
@@ -1988,9 +1982,6 @@ static int sv_body(char *hostname, int s, int stype, unsigned char *context)
     unsigned long l;
     SSL *con = NULL;
     BIO *sbio;
-#ifndef OPENSSL_NO_KRB5
-    KSSL_CTX *kctx;
-#endif
     struct timeval timeout;
 #if defined(OPENSSL_SYS_WINDOWS) || defined(OPENSSL_SYS_MSDOS) || defined(OPENSSL_SYS_NETWARE)
     struct timeval tv;
@@ -2022,15 +2013,6 @@ static int sv_body(char *hostname, int s, int stype, unsigned char *context)
             SSL_CTX_set_tlsext_status_arg(ctx, &tlscstatp);
         }
 #endif
-#ifndef OPENSSL_NO_KRB5
-        if ((kctx = kssl_ctx_new()) != NULL) {
-            SSL_set0_kssl_ctx(con, kctx);
-            kssl_ctx_setstring(kctx, KSSL_SERVICE,
-                               krb5svc ? krb5svc : KRB5SVC);
-            if (krb5tab)
-                kssl_ctx_setstring(kctx, KSSL_KEYTAB, krb5tab);
-        }
-#endif                          /* OPENSSL_NO_KRB5 */
         if (context
                 && !SSL_set_session_id_context(con,
                         context, strlen((char *)context))) {
@@ -2308,8 +2290,10 @@ static int sv_body(char *hostname, int s, int stype, unsigned char *context)
                     ret = 1;
                     goto err;
                 }
-                l += k;
-                i -= k;
+                if (k > 0) {
+                    l += k;
+                    i -= k;
+                }
                 if (i <= 0)
                     break;
             }
@@ -2400,9 +2384,6 @@ static int init_ssl_connection(SSL *con)
     X509 *peer;
     long verify_error;
     char buf[BUFSIZ];
-#ifndef OPENSSL_NO_KRB5
-    char *client_princ;
-#endif
 #if !defined(OPENSSL_NO_TLSEXT) && !defined(OPENSSL_NO_NEXTPROTONEG)
     const unsigned char *next_proto_neg;
     unsigned next_proto_neg_len;
@@ -2503,13 +2484,6 @@ static int init_ssl_connection(SSL *con)
     if (SSL_ctrl(con, SSL_CTRL_GET_FLAGS, 0, NULL) &
         TLS1_FLAGS_TLS_PADDING_BUG)
         BIO_printf(bio_s_out, "Peer has incorrect TLSv1 block padding\n");
-#ifndef OPENSSL_NO_KRB5
-    client_princ = kssl_ctx_get0_client_princ(SSL_get0_kssl_ctx(con));
-    if (client_princ != NULL) {
-        BIO_printf(bio_s_out, "Kerberos peer principal is %s\n",
-                   client_princ);
-    }
-#endif                          /* OPENSSL_NO_KRB5 */
     BIO_printf(bio_s_out, "Secure Renegotiation IS%s supported\n",
                SSL_get_secure_renegotiation_support(con) ? "" : " NOT");
     if (keymatexportlabel != NULL) {
@@ -2558,9 +2532,6 @@ static int www_body(char *hostname, int s, int stype, unsigned char *context)
     SSL *con;
     const SSL_CIPHER *c;
     BIO *io, *ssl_bio, *sbio;
-#ifndef OPENSSL_NO_KRB5
-    KSSL_CTX *kctx;
-#endif
 #ifdef RENEG
     int total_bytes = 0;
 #endif
@@ -2594,12 +2565,6 @@ static int www_body(char *hostname, int s, int stype, unsigned char *context)
         SSL_set_tlsext_debug_arg(con, bio_s_out);
     }
 #endif
-#ifndef OPENSSL_NO_KRB5
-    if ((kctx = kssl_ctx_new()) != NULL) {
-        kssl_ctx_setstring(kctx, KSSL_SERVICE, KRB5SVC);
-        kssl_ctx_setstring(kctx, KSSL_KEYTAB, KRB5KEYTAB);
-    }
-#endif                          /* OPENSSL_NO_KRB5 */
     if (context && !SSL_set_session_id_context(con, context,
                         strlen((char *)context)))
         goto err;
@@ -2927,9 +2892,6 @@ static int rev_body(char *hostname, int s, int stype, unsigned char *context)
     int ret = 1;
     SSL *con;
     BIO *io, *ssl_bio, *sbio;
-#ifndef OPENSSL_NO_KRB5
-    KSSL_CTX *kctx;
-#endif
 
     buf = app_malloc(bufsize, "server rev buffer");
     io = BIO_new(BIO_f_buffer());
@@ -2949,12 +2911,6 @@ static int rev_body(char *hostname, int s, int stype, unsigned char *context)
         SSL_set_tlsext_debug_arg(con, bio_s_out);
     }
 #endif
-#ifndef OPENSSL_NO_KRB5
-    if ((kctx = kssl_ctx_new()) != NULL) {
-        kssl_ctx_setstring(kctx, KSSL_SERVICE, KRB5SVC);
-        kssl_ctx_setstring(kctx, KSSL_KEYTAB, KRB5KEYTAB);
-    }
-#endif                          /* OPENSSL_NO_KRB5 */
     if (context && !SSL_set_session_id_context(con, context,
                         strlen((char *)context))) {
         ERR_print_errors(bio_err);
@@ -3025,7 +2981,7 @@ static int rev_body(char *hostname, int s, int stype, unsigned char *context)
                 p--;
                 i--;
             }
-            if (!s_ign_eof && i == 5 && !strncmp(buf, "CLOSE", 5)) {
+            if (!s_ign_eof && (i == 5) && (strncmp(buf, "CLOSE", 5) == 0)) {
                 ret = 1;
                 BIO_printf(bio_err, "CONNECTION CLOSED\n");
                 goto end;

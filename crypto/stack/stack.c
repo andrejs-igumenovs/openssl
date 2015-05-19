@@ -56,7 +56,7 @@
  * [including the GNU Public Licence.]
  */
 #include <stdio.h>
-#include "cryptlib.h"
+#include "internal/cryptlib.h"
 #include <openssl/stack.h>
 #include <openssl/objects.h>
 
@@ -296,7 +296,7 @@ void sk_zero(_STACK *st)
         return;
     if (st->num <= 0)
         return;
-    memset((char *)st->data, 0, sizeof(*st->data) * st->num);
+    memset(st->data, 0, sizeof(*st->data) * st->num);
     st->num = 0;
 }
 

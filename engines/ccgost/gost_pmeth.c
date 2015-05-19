@@ -28,7 +28,7 @@ static int pkey_gost_init(EVP_PKEY_CTX *ctx)
     data = OPENSSL_malloc(sizeof(*data));
     if (!data)
         return 0;
-    memset(data, 0, sizeof(struct gost_pmeth_data));
+    memset(data, 0, sizeof(*data));
     if (pkey && EVP_PKEY_get0(pkey)) {
         switch (EVP_PKEY_base_id(pkey)) {
         case NID_id_GostR3410_94:
@@ -130,7 +130,8 @@ static int pkey_gost_ctrl94_str(EVP_PKEY_CTX *ctx,
                                 const char *type, const char *value)
 {
     int param_nid = 0;
-    if (!strcmp(type, param_ctrl_string)) {
+
+    if (strcmp(type, param_ctrl_string) == 0) {
         if (!value) {
             return 0;
         }
@@ -192,7 +193,8 @@ static int pkey_gost_ctrl01_str(EVP_PKEY_CTX *ctx,
                                 const char *type, const char *value)
 {
     int param_nid = 0;
-    if (!strcmp(type, param_ctrl_string)) {
+
+    if (strcmp(type, param_ctrl_string) == 0) {
         if (!value) {
             return 0;
         }
@@ -411,7 +413,7 @@ static int pkey_gost_mac_init(EVP_PKEY_CTX *ctx)
 
     if (!data)
         return 0;
-    memset(data, 0, sizeof(struct gost_mac_pmeth_data));
+    memset(data, 0, sizeof(*data));
     EVP_PKEY_CTX_set_data(ctx, data);
     return 1;
 }
@@ -497,7 +499,7 @@ static int pkey_gost_mac_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2)
 static int pkey_gost_mac_ctrl_str(EVP_PKEY_CTX *ctx,
                                   const char *type, const char *value)
 {
-    if (!strcmp(type, key_ctrl_string)) {
+    if (strcmp(type, key_ctrl_string) == 0) {
         if (strlen(value) != 32) {
             GOSTerr(GOST_F_PKEY_GOST_MAC_CTRL_STR,
                     GOST_R_INVALID_MAC_KEY_LENGTH);
@@ -506,7 +508,7 @@ static int pkey_gost_mac_ctrl_str(EVP_PKEY_CTX *ctx,
         return pkey_gost_mac_ctrl(ctx, EVP_PKEY_CTRL_SET_MAC_KEY,
                                   32, (char *)value);
     }
-    if (!strcmp(type, hexkey_ctrl_string)) {
+    if (strcmp(type, hexkey_ctrl_string) == 0) {
         long keylen;
         int ret;
         unsigned char *keybuf = string_to_hex(value, &keylen);

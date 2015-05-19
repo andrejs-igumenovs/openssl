@@ -305,8 +305,6 @@ static const SSL_CIPHER cipher_aliases[] = {
     {0, SSL_TXT_DH, 0, SSL_kDHr | SSL_kDHd | SSL_kDHE, 0, 0, 0, 0, 0, 0, 0,
      0},
 
-    {0, SSL_TXT_kKRB5, 0, SSL_kKRB5, 0, 0, 0, 0, 0, 0, 0, 0},
-
     {0, SSL_TXT_kECDHr, 0, SSL_kECDHr, 0, 0, 0, 0, 0, 0, 0, 0},
     {0, SSL_TXT_kECDHe, 0, SSL_kECDHe, 0, 0, 0, 0, 0, 0, 0, 0},
     {0, SSL_TXT_kECDH, 0, SSL_kECDHr | SSL_kECDHe, 0, 0, 0, 0, 0, 0, 0, 0},
@@ -323,7 +321,6 @@ static const SSL_CIPHER cipher_aliases[] = {
     {0, SSL_TXT_aRSA, 0, 0, SSL_aRSA, 0, 0, 0, 0, 0, 0, 0},
     {0, SSL_TXT_aDSS, 0, 0, SSL_aDSS, 0, 0, 0, 0, 0, 0, 0},
     {0, SSL_TXT_DSS, 0, 0, SSL_aDSS, 0, 0, 0, 0, 0, 0, 0},
-    {0, SSL_TXT_aKRB5, 0, 0, SSL_aKRB5, 0, 0, 0, 0, 0, 0, 0},
     {0, SSL_TXT_aNULL, 0, 0, SSL_aNULL, 0, 0, 0, 0, 0, 0, 0},
     /* no such ciphersuites supported! */
     {0, SSL_TXT_aDH, 0, 0, SSL_aDH, 0, 0, 0, 0, 0, 0, 0},
@@ -342,7 +339,6 @@ static const SSL_CIPHER cipher_aliases[] = {
     {0, SSL_TXT_EECDH, 0, SSL_kECDHE, ~SSL_aNULL, 0, 0, 0, 0, 0, 0, 0},
     {0, SSL_TXT_ECDHE, 0, SSL_kECDHE, ~SSL_aNULL, 0, 0, 0, 0, 0, 0, 0},
     {0, SSL_TXT_NULL, 0, 0, 0, SSL_eNULL, 0, 0, 0, 0, 0, 0},
-    {0, SSL_TXT_KRB5, 0, SSL_kKRB5, SSL_aKRB5, 0, 0, 0, 0, 0, 0, 0},
     {0, SSL_TXT_RSA, 0, SSL_kRSA, SSL_aRSA, 0, 0, 0, 0, 0, 0, 0},
     {0, SSL_TXT_ADH, 0, SSL_kDHE, SSL_aNULL, 0, 0, 0, 0, 0, 0, 0},
     {0, SSL_TXT_AECDH, 0, SSL_kECDHE, SSL_aNULL, 0, 0, 0, 0, 0, 0, 0},
@@ -495,22 +491,20 @@ static void load_builtin_compressions(void)
 
         if (ssl_comp_methods == NULL) {
             SSL_COMP *comp = NULL;
+            COMP_METHOD *method = COMP_zlib();
 
             MemCheck_off();
             ssl_comp_methods = sk_SSL_COMP_new(sk_comp_cmp);
-            if (ssl_comp_methods != NULL) {
+            if (COMP_get_type(method) != NID_undef
+                && ssl_comp_methods != NULL) {
                 comp = OPENSSL_malloc(sizeof(*comp));
                 if (comp != NULL) {
-                    comp->method = COMP_zlib();
-                    if (comp->method && comp->method->type == NID_undef)
-                        OPENSSL_free(comp);
-                    else {
-                        comp->id = SSL_COMP_ZLIB_IDX;
-                        comp->name = comp->method->name;
-                        sk_SSL_COMP_push(ssl_comp_methods, comp);
-                    }
+                    comp->method = method;
+                    comp->id = SSL_COMP_ZLIB_IDX;
+                    comp->name = COMP_get_name(method);
+                    sk_SSL_COMP_push(ssl_comp_methods, comp);
+                    sk_SSL_COMP_sort(ssl_comp_methods);
                 }
-                sk_SSL_COMP_sort(ssl_comp_methods);
             }
             MemCheck_on();
         }
@@ -695,10 +689,6 @@ static void ssl_cipher_get_disabled(unsigned long *mkey, unsigned long *auth,
     *mkey |= SSL_kDHr | SSL_kDHd | SSL_kDHE;
     *auth |= SSL_aDH;
 #endif
-#ifdef OPENSSL_NO_KRB5
-    *mkey |= SSL_kKRB5;
-    *auth |= SSL_aKRB5;
-#endif
 #ifdef OPENSSL_NO_EC
     *mkey |= SSL_kECDHe | SSL_kECDHr;
     *auth |= SSL_aECDSA | SSL_aECDH;
@@ -803,10 +793,6 @@ static void ssl_cipher_collect_ciphers(const SSL_METHOD *ssl_method,
             co_list[co_list_num].prev = NULL;
             co_list[co_list_num].active = 0;
             co_list_num++;
-#ifdef KSSL_DEBUG
-            fprintf(stderr, "\t%d: %s %lx %lx %lx\n", i, c->name, c->id,
-                    c->algorithm_mkey, c->algorithm_auth);
-#endif                          /* KSSL_DEBUG */
             /*
              * if (!sk_push(ca_list,(char *)c)) goto err;
              */
@@ -1063,12 +1049,12 @@ static int ssl_cipher_strength_sort(CIPHER_ORDER **head_p,
         curr = curr->next;
     }
 
-    number_uses = OPENSSL_malloc((max_strength_bits + 1) * sizeof(int));
+    number_uses = OPENSSL_malloc(sizeof(int) * (max_strength_bits + 1));
     if (!number_uses) {
         SSLerr(SSL_F_SSL_CIPHER_STRENGTH_SORT, ERR_R_MALLOC_FAILURE);
         return (0);
     }
-    memset(number_uses, 0, (max_strength_bits + 1) * sizeof(int));
+    memset(number_uses, 0, sizeof(int) * (max_strength_bits + 1));
 
     /*
      * Now find the strength_bits values actually used
@@ -1195,8 +1181,8 @@ static int ssl_cipher_process_rulestr(const char *rule_str,
             j = found = 0;
             cipher_id = 0;
             while (ca_list[j]) {
-                if (!strncmp(buf, ca_list[j]->name, buflen) &&
-                    (ca_list[j]->name[buflen] == '\0')) {
+                if (strncmp(buf, ca_list[j]->name, buflen) == 0
+                    && (ca_list[j]->name[buflen] == '\0')) {
                     found = 1;
                     break;
                 } else
@@ -1311,9 +1297,9 @@ static int ssl_cipher_process_rulestr(const char *rule_str,
          */
         if (rule == CIPHER_SPECIAL) { /* special command */
             ok = 0;
-            if ((buflen == 8) && !strncmp(buf, "STRENGTH", 8))
+            if ((buflen == 8) && strncmp(buf, "STRENGTH", 8) == 0)
                 ok = ssl_cipher_strength_sort(head_p, tail_p);
-            else if (buflen == 10 && !strncmp(buf, "SECLEVEL=", 9)) {
+            else if (buflen == 10 && strncmp(buf, "SECLEVEL=", 9) == 0) {
                 int level = buf[9] - '0';
                 if (level < 0 || level > 5) {
                     SSLerr(SSL_F_SSL_CIPHER_PROCESS_RULESTR,
@@ -1356,14 +1342,14 @@ static int check_suiteb_cipher_list(const SSL_METHOD *meth, CERT *c,
                                     const char **prule_str)
 {
     unsigned int suiteb_flags = 0, suiteb_comb2 = 0;
-    if (!strcmp(*prule_str, "SUITEB128"))
+    if (strcmp(*prule_str, "SUITEB128") == 0)
         suiteb_flags = SSL_CERT_FLAG_SUITEB_128_LOS;
-    else if (!strcmp(*prule_str, "SUITEB128ONLY"))
+    else if (strcmp(*prule_str, "SUITEB128ONLY") == 0)
         suiteb_flags = SSL_CERT_FLAG_SUITEB_128_LOS_ONLY;
-    else if (!strcmp(*prule_str, "SUITEB128C2")) {
+    else if (strcmp(*prule_str, "SUITEB128C2") == 0) {
         suiteb_comb2 = 1;
         suiteb_flags = SSL_CERT_FLAG_SUITEB_128_LOS;
-    } else if (!strcmp(*prule_str, "SUITEB192"))
+    } else if (strcmp(*prule_str, "SUITEB192") == 0)
         suiteb_flags = SSL_CERT_FLAG_SUITEB_192_LOS;
 
     if (suiteb_flags) {
@@ -1448,10 +1434,7 @@ STACK_OF(SSL_CIPHER) *ssl_create_cipher_list(const SSL_METHOD *ssl_method, STACK
      * it is used for allocation.
      */
     num_of_ciphers = ssl_method->num_ciphers();
-#ifdef KSSL_DEBUG
-    fprintf(stderr, "ssl_create_cipher_list() for %d ciphers\n",
-            num_of_ciphers);
-#endif                          /* KSSL_DEBUG */
+
     co_list = OPENSSL_malloc(sizeof(*co_list) * num_of_ciphers);
     if (co_list == NULL) {
         SSLerr(SSL_F_SSL_CREATE_CIPHER_LIST, ERR_R_MALLOC_FAILURE);
@@ -1503,8 +1486,6 @@ STACK_OF(SSL_CIPHER) *ssl_create_cipher_list(const SSL_METHOD *ssl_method, STACK
     ssl_cipher_apply_rule(0, SSL_kRSA, 0, 0, 0, 0, 0, CIPHER_ORD, -1, &head,
                           &tail);
     ssl_cipher_apply_rule(0, SSL_kPSK, 0, 0, 0, 0, 0, CIPHER_ORD, -1, &head,
-                          &tail);
-    ssl_cipher_apply_rule(0, SSL_kKRB5, 0, 0, 0, 0, 0, CIPHER_ORD, -1, &head,
                           &tail);
 
     /* RC4 is sort-of broken -- move the the end */
@@ -1618,13 +1599,8 @@ char *SSL_CIPHER_description(const SSL_CIPHER *cipher, char *buf, int len)
     const char *ver, *exp_str;
     const char *kx, *au, *enc, *mac;
     unsigned long alg_mkey, alg_auth, alg_enc, alg_mac, alg_ssl;
-#ifdef KSSL_DEBUG
-    static const char *format =
-        "%-23s %s Kx=%-8s Au=%-4s Enc=%-9s Mac=%-4s%s AL=%lx/%lx/%lx/%lx/%lx\n";
-#else
     static const char *format =
         "%-23s %s Kx=%-8s Au=%-4s Enc=%-9s Mac=%-4s%s\n";
-#endif                          /* KSSL_DEBUG */
 
     alg_mkey = cipher->algorithm_mkey;
     alg_auth = cipher->algorithm_auth;
@@ -1653,9 +1629,6 @@ char *SSL_CIPHER_description(const SSL_CIPHER *cipher, char *buf, int len)
         break;
     case SSL_kDHd:
         kx = "DH/DSS";
-        break;
-    case SSL_kKRB5:
-        kx = "KRB5";
         break;
     case SSL_kDHE:
         kx = is_export ? (pkl == 512 ? "DH(512)" : "DH(1024)") : "DH";
@@ -1691,9 +1664,6 @@ char *SSL_CIPHER_description(const SSL_CIPHER *cipher, char *buf, int len)
         break;
     case SSL_aDH:
         au = "DH";
-        break;
-    case SSL_aKRB5:
-        au = "KRB5";
         break;
     case SSL_aECDH:
         au = "ECDH";
@@ -1804,13 +1774,9 @@ char *SSL_CIPHER_description(const SSL_CIPHER *cipher, char *buf, int len)
     } else if (len < 128)
         return ("Buffer too small");
 
-#ifdef KSSL_DEBUG
-    BIO_snprintf(buf, len, format, cipher->name, ver, kx, au, enc, mac,
-                 exp_str, alg_mkey, alg_auth, alg_enc, alg_mac, alg_ssl);
-#else
     BIO_snprintf(buf, len, format, cipher->name, ver, kx, au, enc, mac,
                  exp_str);
-#endif                          /* KSSL_DEBUG */
+
     return (buf);
 }
 
@@ -1870,20 +1836,23 @@ SSL_COMP *ssl3_comp_find(STACK_OF(SSL_COMP) *sk, int n)
 }
 
 #ifdef OPENSSL_NO_COMP
-void *SSL_COMP_get_compression_methods(void)
+STACK_OF(SSL_COMP) *SSL_COMP_get_compression_methods(void)
 {
     return NULL;
 }
-
-int SSL_COMP_add_compression_method(int id, void *cm)
+STACK_OF(SSL_COMP) *SSL_COMP_set0_compression_methods(STACK_OF(SSL_COMP)
+                                                      *meths)
+{
+    return meths;
+}
+void SSL_COMP_free_compression_methods(void)
+{
+}
+int SSL_COMP_add_compression_method(int id, COMP_METHOD *cm)
 {
     return 1;
 }
 
-const char *SSL_COMP_get_name(const void *comp)
-{
-    return NULL;
-}
 #else
 STACK_OF(SSL_COMP) *SSL_COMP_get_compression_methods(void)
 {
@@ -1915,7 +1884,7 @@ int SSL_COMP_add_compression_method(int id, COMP_METHOD *cm)
 {
     SSL_COMP *comp;
 
-    if (cm == NULL || cm->type == NID_undef)
+    if (cm == NULL || COMP_get_type(cm) == NID_undef)
         return 1;
 
     /*-
@@ -1960,14 +1929,17 @@ int SSL_COMP_add_compression_method(int id, COMP_METHOD *cm)
         return (0);
     }
 }
+#endif
 
 const char *SSL_COMP_get_name(const COMP_METHOD *comp)
 {
-    if (comp)
-        return comp->name;
+#ifndef OPENSSL_NO_COMP
+    return comp ? COMP_get_name(comp) : NULL;
+#else
     return NULL;
-}
 #endif
+}
+
 /* For a cipher return the index corresponding to the certificate type */
 int ssl_cipher_get_cert_index(const SSL_CIPHER *c)
 {
@@ -1996,9 +1968,6 @@ int ssl_cipher_get_cert_index(const SSL_CIPHER *c)
         return SSL_PKEY_DSA_SIGN;
     else if (alg_a & SSL_aRSA)
         return SSL_PKEY_RSA_ENC;
-    else if (alg_a & SSL_aKRB5)
-        /* VRS something else here? */
-        return -1;
     else if (alg_a & SSL_aGOST94)
         return SSL_PKEY_GOST94;
     else if (alg_a & SSL_aGOST01)

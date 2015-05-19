@@ -110,7 +110,7 @@
  */
 
 #include "../ssl_locl.h"
-#include "../../crypto/constant_time_locl.h"
+#include "internal/constant_time_locl.h"
 #include <openssl/rand.h>
 #include "record_locl.h"
 
@@ -166,6 +166,7 @@ void SSL3_RECORD_set_seq_num(SSL3_RECORD *r, const unsigned char *seq_num)
  */
 #define MAX_EMPTY_RECORDS 32
 
+#define SSL2_RT_HEADER_LENGTH   2
 /*-
  * Call this to get a new input record.
  * It will return <= 0 if more data is needed, normally due to an error
@@ -216,20 +217,49 @@ int ssl3_get_record(SSL *s)
         RECORD_LAYER_set_rstate(&s->rlayer, SSL_ST_READ_BODY);
 
         p = RECORD_LAYER_get_packet(&s->rlayer);
-        if (s->msg_callback)
-            s->msg_callback(0, 0, SSL3_RT_HEADER, p, 5, s,
-                            s->msg_callback_arg);
 
-        /* Pull apart the header into the SSL3_RECORD */
-        rr->type = *(p++);
-        ssl_major = *(p++);
-        ssl_minor = *(p++);
-        version = (ssl_major << 8) | ssl_minor;
-        n2s(p, rr->length);
+        /*
+         * Check whether this is a regular record or an SSLv2 style record. The
+         * latter is only used in an initial ClientHello for old clients. We
+         * check s->read_hash and s->enc_read_ctx to ensure this does not apply
+         * during renegotiation
+         */
+        if (s->first_packet && s->server && !s->read_hash && !s->enc_read_ctx
+                && (p[0] & 0x80) && (p[2] == SSL2_MT_CLIENT_HELLO)) {
+            /* SSLv2 style record */
+            rr->type = SSL3_RT_HANDSHAKE;
+            rr->rec_version = SSL2_VERSION;
 
-        /* Lets check version */
-        if (!s->first_packet) {
-            if (version != s->version) {
+            rr->length = ((p[0] & 0x7f) << 8) | p[1];
+
+            if (rr->length > SSL3_BUFFER_get_len(&s->rlayer.rbuf)
+                                    - SSL2_RT_HEADER_LENGTH) {
+                al = SSL_AD_RECORD_OVERFLOW;
+                SSLerr(SSL_F_SSL3_GET_RECORD, SSL_R_PACKET_LENGTH_TOO_LONG);
+                goto f_err;
+            }
+
+            if (rr->length < MIN_SSL2_RECORD_LEN) {
+                al = SSL_AD_HANDSHAKE_FAILURE;
+                SSLerr(SSL_F_SSL3_GET_RECORD, SSL_R_LENGTH_TOO_SHORT);
+                goto f_err;
+            }
+        } else {
+            /* SSLv3+ style record */
+            if (s->msg_callback)
+                s->msg_callback(0, 0, SSL3_RT_HEADER, p, 5, s,
+                                s->msg_callback_arg);
+
+            /* Pull apart the header into the SSL3_RECORD */
+            rr->type = *(p++);
+            ssl_major = *(p++);
+            ssl_minor = *(p++);
+            version = (ssl_major << 8) | ssl_minor;
+            rr->rec_version = version;
+            n2s(p, rr->length);
+
+            /* Lets check version */
+            if (!s->first_packet && version != s->version) {
                 SSLerr(SSL_F_SSL3_GET_RECORD, SSL_R_WRONG_VERSION_NUMBER);
                 if ((s->version & 0xFF00) == (version & 0xFF00)
                     && !s->enc_write_ctx && !s->write_hash)
@@ -240,47 +270,54 @@ int ssl3_get_record(SSL *s)
                 al = SSL_AD_PROTOCOL_VERSION;
                 goto f_err;
             }
-        }
 
-        if ((version >> 8) != SSL3_VERSION_MAJOR) {
-            SSLerr(SSL_F_SSL3_GET_RECORD, SSL_R_WRONG_VERSION_NUMBER);
-            goto err;
-        }
+            if ((version >> 8) != SSL3_VERSION_MAJOR) {
+                SSLerr(SSL_F_SSL3_GET_RECORD, SSL_R_WRONG_VERSION_NUMBER);
+                goto err;
+            }
 
-        if (rr->length >
-                SSL3_BUFFER_get_len(&s->rlayer.rbuf)
-                - SSL3_RT_HEADER_LENGTH) {
-            al = SSL_AD_RECORD_OVERFLOW;
-            SSLerr(SSL_F_SSL3_GET_RECORD, SSL_R_PACKET_LENGTH_TOO_LONG);
-            goto f_err;
+            if (rr->length >
+                    SSL3_BUFFER_get_len(&s->rlayer.rbuf)
+                    - SSL3_RT_HEADER_LENGTH) {
+                al = SSL_AD_RECORD_OVERFLOW;
+                SSLerr(SSL_F_SSL3_GET_RECORD, SSL_R_PACKET_LENGTH_TOO_LONG);
+                goto f_err;
+            }
         }
 
         /* now s->rlayer.rstate == SSL_ST_READ_BODY */
     }
 
-    /* s->rlayer.rstate == SSL_ST_READ_BODY, get and decode the data */
-
-    if (rr->length >
-        RECORD_LAYER_get_packet_length(&s->rlayer) - SSL3_RT_HEADER_LENGTH) {
-        /* now s->packet_length == SSL3_RT_HEADER_LENGTH */
+    /*
+     * s->rlayer.rstate == SSL_ST_READ_BODY, get and decode the data.
+     * Calculate how much more data we need to read for the rest of the record
+     */
+    if (rr->rec_version == SSL2_VERSION) {
+        i = rr->length + SSL2_RT_HEADER_LENGTH - SSL3_RT_HEADER_LENGTH;
+    } else {
         i = rr->length;
+    }
+    if (i > 0) {
+        /* now s->packet_length == SSL3_RT_HEADER_LENGTH */
+
         n = ssl3_read_n(s, i, i, 1);
         if (n <= 0)
             return (n);         /* error or non-blocking io */
-        /*
-         * now n == rr->length, and s->packet_length == SSL3_RT_HEADER_LENGTH
-         * + rr->length
-         */
     }
 
     /* set state for later operations */
     RECORD_LAYER_set_rstate(&s->rlayer, SSL_ST_READ_HEADER);
 
     /*
-     * At this point, s->packet_length == SSL3_RT_HEADER_LNGTH + rr->length,
+     * At this point, s->packet_length == SSL3_RT_HEADER_LENGTH + rr->length,
+     * or s->packet_length == SSL2_RT_HEADER_LENGTH + rr->length
      * and we have that many bytes in s->packet
      */
-    rr->input = &(RECORD_LAYER_get_packet(&s->rlayer)[SSL3_RT_HEADER_LENGTH]);
+    if(rr->rec_version == SSL2_VERSION) {
+        rr->input = &(RECORD_LAYER_get_packet(&s->rlayer)[SSL2_RT_HEADER_LENGTH]);
+    } else {
+        rr->input = &(RECORD_LAYER_get_packet(&s->rlayer)[SSL3_RT_HEADER_LENGTH]);
+    }
 
     /*
      * ok, we can now read from 's->packet' data into 'rr' rr->input points
@@ -644,10 +681,6 @@ int tls1_enc(SSL *s, int send)
             enc = EVP_CIPHER_CTX_cipher(s->enc_read_ctx);
     }
 
-#ifdef KSSL_DEBUG
-    fprintf(stderr, "tls1_enc(%d)\n", send);
-#endif                          /* KSSL_DEBUG */
-
     if ((s->session == NULL) || (ds == NULL) || (enc == NULL)) {
         memmove(rec->data, rec->input, rec->length);
         rec->input = rec->data;
@@ -707,26 +740,6 @@ int tls1_enc(SSL *s, int send)
             l += i;
             rec->length += i;
         }
-#ifdef KSSL_DEBUG
-        {
-            unsigned long ui;
-            fprintf(stderr,
-                    "EVP_Cipher(ds=%p,rec->data=%p,rec->input=%p,l=%ld) ==>\n",
-                    ds, rec->data, rec->input, l);
-            fprintf(stderr,
-                    "\tEVP_CIPHER_CTX: %d buf_len, %d key_len [%lu %lu], %d iv_len\n",
-                    ds->buf_len, ds->cipher->key_len, DES_KEY_SZ,
-                    DES_SCHEDULE_SZ, ds->cipher->iv_len);
-            fprintf(stderr, "\t\tIV: ");
-            for (i = 0; i < ds->cipher->iv_len; i++)
-                fprintf(stderr, "%02X", ds->iv[i]);
-            fprintf(stderr, "\n");
-            fprintf(stderr, "\trec->input=");
-            for (ui = 0; ui < l; ui++)
-                fprintf(stderr, " %02x", rec->input[ui]);
-            fprintf(stderr, "\n");
-        }
-#endif                          /* KSSL_DEBUG */
 
         if (!send) {
             if (l == 0 || l % bs != 0)
@@ -743,15 +756,6 @@ int tls1_enc(SSL *s, int send)
             rec->input += EVP_GCM_TLS_EXPLICIT_IV_LEN;
             rec->length -= EVP_GCM_TLS_EXPLICIT_IV_LEN;
         }
-#ifdef KSSL_DEBUG
-        {
-            unsigned long i;
-            fprintf(stderr, "\trec->data=");
-            for (i = 0; i < l; i++)
-                fprintf(stderr, " %02x", rec->data[i]);
-            fprintf(stderr, "\n");
-        }
-#endif                          /* KSSL_DEBUG */
 
         ret = 1;
         if (!SSL_USE_ETM(s) && EVP_MD_CTX_md(s->read_hash) != NULL)

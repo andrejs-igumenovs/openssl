@@ -59,7 +59,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include "cryptlib.h"
+#include "internal/cryptlib.h"
 #include <openssl/objects.h>
 #include <openssl/evp.h>
 #ifndef OPENSSL_NO_ENGINE
@@ -202,7 +202,7 @@ EVP_PKEY_METHOD *EVP_PKEY_meth_new(int id, int flags)
     if (!pmeth)
         return NULL;
 
-    memset(pmeth, 0, sizeof(EVP_PKEY_METHOD));
+    memset(pmeth, 0, sizeof(*pmeth));
 
     pmeth->pkey_id = id;
     pmeth->flags = flags | EVP_PKEY_FLAG_DYNAMIC;
@@ -414,9 +414,9 @@ int EVP_PKEY_CTX_ctrl_str(EVP_PKEY_CTX *ctx,
         EVPerr(EVP_F_EVP_PKEY_CTX_CTRL_STR, EVP_R_COMMAND_NOT_SUPPORTED);
         return -2;
     }
-    if (!strcmp(name, "digest")) {
+    if (strcmp(name, "digest") == 0) {
         const EVP_MD *md;
-        if (!value || !(md = EVP_get_digestbyname(value))) {
+        if (value == NULL || (md = EVP_get_digestbyname(value)) == NULL) {
             EVPerr(EVP_F_EVP_PKEY_CTX_CTRL_STR, EVP_R_INVALID_DIGEST);
             return 0;
         }

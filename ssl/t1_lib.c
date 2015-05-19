@@ -795,9 +795,9 @@ static int tls1_check_cert_param(SSL *s, X509 *x, int set_ee_md)
             return 0;
         if (set_ee_md == 2) {
             if (check_md == NID_ecdsa_with_SHA256)
-                c->pkeys[SSL_PKEY_ECC].digest = EVP_sha256();
+                s->s3->tmp.md[SSL_PKEY_ECC] = EVP_sha256();
             else
-                c->pkeys[SSL_PKEY_ECC].digest = EVP_sha384();
+                s->s3->tmp.md[SSL_PKEY_ECC] = EVP_sha384();
         }
     }
     return rv;
@@ -1036,8 +1036,7 @@ int tls12_check_peer_sigalg(const EVP_MD **pmd, SSL *s,
     /*
      * Store the digest used so applications can retrieve it if they wish.
      */
-    if (s->session && s->session->sess_cert)
-        s->session->sess_cert->peer_key->digest = *pmd;
+    s->s3->tmp.peer_md = *pmd;
     return 1;
 }
 
@@ -1049,52 +1048,44 @@ int tls12_check_peer_sigalg(const EVP_MD **pmd, SSL *s,
  */
 void ssl_set_client_disabled(SSL *s)
 {
-    CERT *c = s->cert;
-    c->mask_a = 0;
-    c->mask_k = 0;
+    s->s3->tmp.mask_a = 0;
+    s->s3->tmp.mask_k = 0;
     /* Don't allow TLS 1.2 only ciphers if we don't suppport them */
     if (!SSL_CLIENT_USE_TLS1_2_CIPHERS(s))
-        c->mask_ssl = SSL_TLSV1_2;
+        s->s3->tmp.mask_ssl = SSL_TLSV1_2;
     else
-        c->mask_ssl = 0;
-    ssl_set_sig_mask(&c->mask_a, s, SSL_SECOP_SIGALG_MASK);
+        s->s3->tmp.mask_ssl = 0;
+    ssl_set_sig_mask(&s->s3->tmp.mask_a, s, SSL_SECOP_SIGALG_MASK);
     /*
      * Disable static DH if we don't include any appropriate signature
      * algorithms.
      */
-    if (c->mask_a & SSL_aRSA)
-        c->mask_k |= SSL_kDHr | SSL_kECDHr;
-    if (c->mask_a & SSL_aDSS)
-        c->mask_k |= SSL_kDHd;
-    if (c->mask_a & SSL_aECDSA)
-        c->mask_k |= SSL_kECDHe;
-# ifndef OPENSSL_NO_KRB5
-    if (!kssl_tgt_is_available(s->kssl_ctx)) {
-        c->mask_a |= SSL_aKRB5;
-        c->mask_k |= SSL_kKRB5;
-    }
-# endif
+    if (s->s3->tmp.mask_a & SSL_aRSA)
+        s->s3->tmp.mask_k |= SSL_kDHr | SSL_kECDHr;
+    if (s->s3->tmp.mask_a & SSL_aDSS)
+        s->s3->tmp.mask_k |= SSL_kDHd;
+    if (s->s3->tmp.mask_a & SSL_aECDSA)
+        s->s3->tmp.mask_k |= SSL_kECDHe;
 # ifndef OPENSSL_NO_PSK
     /* with PSK there must be client callback set */
     if (!s->psk_client_callback) {
-        c->mask_a |= SSL_aPSK;
-        c->mask_k |= SSL_kPSK;
+        s->s3->tmp.mask_a |= SSL_aPSK;
+        s->s3->tmp.mask_k |= SSL_kPSK;
     }
 # endif                         /* OPENSSL_NO_PSK */
 # ifndef OPENSSL_NO_SRP
     if (!(s->srp_ctx.srp_Mask & SSL_kSRP)) {
-        c->mask_a |= SSL_aSRP;
-        c->mask_k |= SSL_kSRP;
+        s->s3->tmp.mask_a |= SSL_aSRP;
+        s->s3->tmp.mask_k |= SSL_kSRP;
     }
 # endif
-    c->valid = 1;
 }
 
 int ssl_cipher_disabled(SSL *s, const SSL_CIPHER *c, int op)
 {
-    CERT *ct = s->cert;
-    if (c->algorithm_ssl & ct->mask_ssl || c->algorithm_mkey & ct->mask_k
-        || c->algorithm_auth & ct->mask_a)
+    if (c->algorithm_ssl & s->s3->tmp.mask_ssl
+        || c->algorithm_mkey & s->s3->tmp.mask_k
+        || c->algorithm_auth & s->s3->tmp.mask_a)
         return 1;
     return !ssl_security(s, op, c->strength_bits, 0, (void *)c);
 }
@@ -1464,13 +1455,7 @@ unsigned char *ssl_add_clienthello_tlsext(SSL *s, unsigned char *buf,
      */
     if (s->options & SSL_OP_TLSEXT_PADDING) {
         int hlen = ret - (unsigned char *)s->init_buf->data;
-        /*
-         * The code in s23_clnt.c to build ClientHello messages includes the
-         * 5-byte record header in the buffer, while the code in s3_clnt.c
-         * does not.
-         */
-        if (s->state == SSL23_ST_CW_CLNT_HELLO_A)
-            hlen -= 5;
+
         if (hlen > 0xff && hlen < 0x200) {
             hlen = 0x200 - hlen;
             if (hlen >= 4)
@@ -1901,8 +1886,8 @@ static int ssl_scan_clienthello_tlsext(SSL *s, unsigned char **p,
 # endif                         /* !OPENSSL_NO_EC */
 
     /* Clear any signature algorithms extension received */
-    OPENSSL_free(s->cert->peer_sigalgs);
-    s->cert->peer_sigalgs = NULL;
+    OPENSSL_free(s->s3->tmp.peer_sigalgs);
+    s->s3->tmp.peer_sigalgs = NULL;
 # ifdef TLSEXT_TYPE_encrypt_then_mac
     s->s3->flags &= ~TLS1_FLAGS_ENCRYPT_THEN_MAC;
 # endif
@@ -2119,7 +2104,7 @@ static int ssl_scan_clienthello_tlsext(SSL *s, unsigned char **p,
             }
         } else if (type == TLSEXT_TYPE_signature_algorithms) {
             int dsize;
-            if (s->cert->peer_sigalgs || size < 2) {
+            if (s->s3->tmp.peer_sigalgs || size < 2) {
                 *al = SSL_AD_DECODE_ERROR;
                 return 0;
             }
@@ -2680,6 +2665,21 @@ static int ssl_check_clienthello_tlsext_early(SSL *s)
         return 1;
     }
 }
+/* Initialise digests to default values */
+static void ssl_set_default_md(SSL *s)
+{
+    const EVP_MD **pmd = s->s3->tmp.md;
+#ifndef OPENSSL_NO_DSA
+    pmd[SSL_PKEY_DSA_SIGN] = EVP_sha1();
+#endif
+#ifndef OPENSSL_NO_RSA
+    pmd[SSL_PKEY_RSA_SIGN] = EVP_sha1();
+    pmd[SSL_PKEY_RSA_ENC] = EVP_sha1();
+#endif
+#ifndef OPENSSL_NO_EC
+    pmd[SSL_PKEY_ECC] = EVP_sha1();
+#endif
+}
 
 int tls1_set_server_sigalgs(SSL *s)
 {
@@ -2691,12 +2691,12 @@ int tls1_set_server_sigalgs(SSL *s)
     s->cert->shared_sigalgslen = 0;
     /* Clear certificate digests and validity flags */
     for (i = 0; i < SSL_PKEY_NUM; i++) {
-        s->cert->pkeys[i].digest = NULL;
-        s->cert->pkeys[i].valid_flags = 0;
+        s->s3->tmp.md[i] = NULL;
+        s->s3->tmp.valid_flags[i] = 0;
     }
 
     /* If sigalgs received process it. */
-    if (s->cert->peer_sigalgs) {
+    if (s->s3->tmp.peer_sigalgs) {
         if (!tls1_process_sigalgs(s)) {
             SSLerr(SSL_F_TLS1_SET_SERVER_SIGALGS, ERR_R_MALLOC_FAILURE);
             al = SSL_AD_INTERNAL_ERROR;
@@ -2709,8 +2709,9 @@ int tls1_set_server_sigalgs(SSL *s)
             al = SSL_AD_ILLEGAL_PARAMETER;
             goto err;
         }
-    } else
-        ssl_cert_set_default_md(s->cert);
+    } else {
+        ssl_set_default_md(s);
+    }
     return 1;
  err:
     ssl3_send_alert(s, SSL3_AL_FATAL, al);
@@ -2720,7 +2721,7 @@ int tls1_set_server_sigalgs(SSL *s)
 int ssl_check_clienthello_tlsext_late(SSL *s)
 {
     int ret = SSL_TLSEXT_ERR_OK;
-    int al;
+    int al = SSL_AD_INTERNAL_ERROR;
 
     /*
      * If status request then ask callback what to do. Note: this must be
@@ -3398,13 +3399,13 @@ static int tls1_set_shared_sigalgs(SSL *s)
     if (s->options & SSL_OP_CIPHER_SERVER_PREFERENCE || is_suiteb) {
         pref = conf;
         preflen = conflen;
-        allow = c->peer_sigalgs;
-        allowlen = c->peer_sigalgslen;
+        allow = s->s3->tmp.peer_sigalgs;
+        allowlen = s->s3->tmp.peer_sigalgslen;
     } else {
         allow = conf;
         allowlen = conflen;
-        pref = c->peer_sigalgs;
-        preflen = c->peer_sigalgslen;
+        pref = s->s3->tmp.peer_sigalgs;
+        preflen = s->s3->tmp.peer_sigalgslen;
     }
     nmatch = tls12_shared_sigalgs(s, NULL, pref, preflen, allow, allowlen);
     if (nmatch) {
@@ -3432,12 +3433,12 @@ int tls1_save_sigalgs(SSL *s, const unsigned char *data, int dsize)
     if (!c)
         return 0;
 
-    OPENSSL_free(c->peer_sigalgs);
-    c->peer_sigalgs = OPENSSL_malloc(dsize);
-    if (!c->peer_sigalgs)
+    OPENSSL_free(s->s3->tmp.peer_sigalgs);
+    s->s3->tmp.peer_sigalgs = OPENSSL_malloc(dsize);
+    if (s->s3->tmp.peer_sigalgs == NULL)
         return 0;
-    c->peer_sigalgslen = dsize;
-    memcpy(c->peer_sigalgs, data, dsize);
+    s->s3->tmp.peer_sigalgslen = dsize;
+    memcpy(s->s3->tmp.peer_sigalgs, data, dsize);
     return 1;
 }
 
@@ -3446,6 +3447,8 @@ int tls1_process_sigalgs(SSL *s)
     int idx;
     size_t i;
     const EVP_MD *md;
+    const EVP_MD **pmd = s->s3->tmp.md;
+    int *pvalid = s->s3->tmp.valid_flags;
     CERT *c = s->cert;
     TLS_SIGALGS *sigptr;
     if (!tls1_set_shared_sigalgs(s))
@@ -3465,12 +3468,11 @@ int tls1_process_sigalgs(SSL *s)
         if (sigs) {
             idx = tls12_get_pkey_idx(sigs[1]);
             md = tls12_get_hash(sigs[0]);
-            c->pkeys[idx].digest = md;
-            c->pkeys[idx].valid_flags = CERT_PKEY_EXPLICIT_SIGN;
+            pmd[idx] = md;
+            pvalid[idx] = CERT_PKEY_EXPLICIT_SIGN;
             if (idx == SSL_PKEY_RSA_SIGN) {
-                c->pkeys[SSL_PKEY_RSA_ENC].valid_flags =
-                    CERT_PKEY_EXPLICIT_SIGN;
-                c->pkeys[SSL_PKEY_RSA_ENC].digest = md;
+                pvalid[SSL_PKEY_RSA_ENC] = CERT_PKEY_EXPLICIT_SIGN;
+                pmd[SSL_PKEY_RSA_ENC] = md;
             }
         }
     }
@@ -3479,14 +3481,13 @@ int tls1_process_sigalgs(SSL *s)
     for (i = 0, sigptr = c->shared_sigalgs;
          i < c->shared_sigalgslen; i++, sigptr++) {
         idx = tls12_get_pkey_idx(sigptr->rsign);
-        if (idx > 0 && c->pkeys[idx].digest == NULL) {
+        if (idx > 0 && pmd[idx] == NULL) {
             md = tls12_get_hash(sigptr->rhash);
-            c->pkeys[idx].digest = md;
-            c->pkeys[idx].valid_flags = CERT_PKEY_EXPLICIT_SIGN;
+            pmd[idx] = md;
+            pvalid[idx] = CERT_PKEY_EXPLICIT_SIGN;
             if (idx == SSL_PKEY_RSA_SIGN) {
-                c->pkeys[SSL_PKEY_RSA_ENC].valid_flags =
-                    CERT_PKEY_EXPLICIT_SIGN;
-                c->pkeys[SSL_PKEY_RSA_ENC].digest = md;
+                pvalid[SSL_PKEY_RSA_ENC] = CERT_PKEY_EXPLICIT_SIGN;
+                pmd[SSL_PKEY_RSA_ENC] = md;
             }
         }
 
@@ -3501,18 +3502,18 @@ int tls1_process_sigalgs(SSL *s)
          * supported it stays as NULL.
          */
 # ifndef OPENSSL_NO_DSA
-        if (!c->pkeys[SSL_PKEY_DSA_SIGN].digest)
-            c->pkeys[SSL_PKEY_DSA_SIGN].digest = EVP_sha1();
+        if (pmd[SSL_PKEY_DSA_SIGN] == NULL)
+            pmd[SSL_PKEY_DSA_SIGN] = EVP_sha1();
 # endif
 # ifndef OPENSSL_NO_RSA
-        if (!c->pkeys[SSL_PKEY_RSA_SIGN].digest) {
-            c->pkeys[SSL_PKEY_RSA_SIGN].digest = EVP_sha1();
-            c->pkeys[SSL_PKEY_RSA_ENC].digest = EVP_sha1();
+        if (pmd[SSL_PKEY_RSA_SIGN] == NULL) {
+            pmd[SSL_PKEY_RSA_SIGN] = EVP_sha1();
+            pmd[SSL_PKEY_RSA_ENC] = EVP_sha1();
         }
 # endif
 # ifndef OPENSSL_NO_EC
-        if (!c->pkeys[SSL_PKEY_ECC].digest)
-            c->pkeys[SSL_PKEY_ECC].digest = EVP_sha1();
+        if (pmd[SSL_PKEY_ECC] == NULL)
+            pmd[SSL_PKEY_ECC] = EVP_sha1();
 # endif
     }
     return 1;
@@ -3522,12 +3523,12 @@ int SSL_get_sigalgs(SSL *s, int idx,
                     int *psign, int *phash, int *psignhash,
                     unsigned char *rsig, unsigned char *rhash)
 {
-    const unsigned char *psig = s->cert->peer_sigalgs;
+    const unsigned char *psig = s->s3->tmp.peer_sigalgs;
     if (psig == NULL)
         return 0;
     if (idx >= 0) {
         idx <<= 1;
-        if (idx >= (int)s->cert->peer_sigalgslen)
+        if (idx >= (int)s->s3->tmp.peer_sigalgslen)
             return 0;
         psig += idx;
         if (rhash)
@@ -3536,7 +3537,7 @@ int SSL_get_sigalgs(SSL *s, int idx,
             *rsig = psig[1];
         tls1_lookup_sigalg(phash, psign, psignhash, psig);
     }
-    return s->cert->peer_sigalgslen / 2;
+    return s->s3->tmp.peer_sigalgslen / 2;
 }
 
 int SSL_get_shared_sigalgs(SSL *s, int idx,
@@ -3749,11 +3750,11 @@ static int sig_cb(const char *elem, int len, void *arg)
     if (!*p)
         return 0;
 
-    if (!strcmp(etmp, "RSA"))
+    if (strcmp(etmp, "RSA") == 0)
         sig_alg = EVP_PKEY_RSA;
-    else if (!strcmp(etmp, "DSA"))
+    else if (strcmp(etmp, "DSA") == 0)
         sig_alg = EVP_PKEY_DSA;
-    else if (!strcmp(etmp, "ECDSA"))
+    else if (strcmp(etmp, "ECDSA") == 0)
         sig_alg = EVP_PKEY_EC;
     else
         return 0;
@@ -3878,6 +3879,7 @@ int tls1_check_chain(SSL *s, X509 *x, EVP_PKEY *pk, STACK_OF(X509) *chain,
     int check_flags = 0, strict_mode;
     CERT_PKEY *cpk = NULL;
     CERT *c = s->cert;
+    int *pvalid;
     unsigned int suiteb_flags = tls1_suiteb(s);
     /* idx == -1 means checking server chains */
     if (idx != -1) {
@@ -3887,6 +3889,7 @@ int tls1_check_chain(SSL *s, X509 *x, EVP_PKEY *pk, STACK_OF(X509) *chain,
             idx = cpk - c->pkeys;
         } else
             cpk = c->pkeys + idx;
+        pvalid = s->s3->tmp.valid_flags + idx;
         x = cpk->x509;
         pk = cpk->privatekey;
         chain = cpk->chain;
@@ -3899,7 +3902,7 @@ int tls1_check_chain(SSL *s, X509 *x, EVP_PKEY *pk, STACK_OF(X509) *chain,
         if (s->cert->cert_flags & SSL_CERT_FLAG_BROKEN_PROTOCOL) {
             rv = CERT_PKEY_STRICT_FLAGS | CERT_PKEY_EXPLICIT_SIGN |
                 CERT_PKEY_VALID | CERT_PKEY_SIGN;
-            cpk->valid_flags = rv;
+            *pvalid = rv;
             return rv;
         }
 # endif
@@ -3910,6 +3913,8 @@ int tls1_check_chain(SSL *s, X509 *x, EVP_PKEY *pk, STACK_OF(X509) *chain,
         if (idx == -1)
             return 0;
         cpk = c->pkeys + idx;
+        pvalid = s->s3->tmp.valid_flags + idx;
+
         if (c->cert_flags & SSL_CERT_FLAGS_CHECK_TLS_STRICT)
             check_flags = CERT_PKEY_STRICT_FLAGS;
         else
@@ -3935,7 +3940,7 @@ int tls1_check_chain(SSL *s, X509 *x, EVP_PKEY *pk, STACK_OF(X509) *chain,
     if (TLS1_get_version(s) >= TLS1_2_VERSION && strict_mode) {
         int default_nid;
         unsigned char rsign = 0;
-        if (c->peer_sigalgs)
+        if (s->s3->tmp.peer_sigalgs)
             default_nid = 0;
         /* If no sigalgs extension use defaults from RFC5246 */
         else {
@@ -4096,9 +4101,9 @@ int tls1_check_chain(SSL *s, X509 *x, EVP_PKEY *pk, STACK_OF(X509) *chain,
  end:
 
     if (TLS1_get_version(s) >= TLS1_2_VERSION) {
-        if (cpk->valid_flags & CERT_PKEY_EXPLICIT_SIGN)
+        if (*pvalid & CERT_PKEY_EXPLICIT_SIGN)
             rv |= CERT_PKEY_EXPLICIT_SIGN | CERT_PKEY_SIGN;
-        else if (cpk->digest)
+        else if (s->s3->tmp.md[idx] != NULL)
             rv |= CERT_PKEY_SIGN;
     } else
         rv |= CERT_PKEY_SIGN | CERT_PKEY_EXPLICIT_SIGN;
@@ -4109,10 +4114,10 @@ int tls1_check_chain(SSL *s, X509 *x, EVP_PKEY *pk, STACK_OF(X509) *chain,
      */
     if (!check_flags) {
         if (rv & CERT_PKEY_VALID)
-            cpk->valid_flags = rv;
+            *pvalid = rv;
         else {
             /* Preserve explicit sign flag, clear rest */
-            cpk->valid_flags &= CERT_PKEY_EXPLICIT_SIGN;
+            *pvalid &= CERT_PKEY_EXPLICIT_SIGN;
             return 0;
         }
     }

@@ -216,7 +216,6 @@ static int ssl_set_pkey(CERT *c, EVP_PKEY *pkey)
     CRYPTO_add(&pkey->references, 1, CRYPTO_LOCK_EVP_PKEY);
     c->pkeys[i].privatekey = pkey;
     c->key = &(c->pkeys[i]);
-    c->valid = 0;
     return (1);
 }
 
@@ -420,7 +419,6 @@ static int ssl_set_cert(CERT *c, X509 *x)
     c->pkeys[i].x509 = x;
     c->key = &(c->pkeys[i]);
 
-    c->valid = 0;
     return (1);
 }
 
@@ -641,7 +639,7 @@ int SSL_CTX_use_PrivateKey_ASN1(int type, SSL_CTX *ctx,
  * followed by a sequence of CA certificates that should be sent to the peer
  * in the Certificate message.
  */
-int SSL_CTX_use_certificate_chain_file(SSL_CTX *ctx, const char *file)
+static int use_certificate_chain_file(SSL_CTX *ctx, SSL *ssl, const char *file)
 {
     BIO *in;
     int ret = 0;
@@ -652,23 +650,26 @@ int SSL_CTX_use_certificate_chain_file(SSL_CTX *ctx, const char *file)
 
     in = BIO_new(BIO_s_file_internal());
     if (in == NULL) {
-        SSLerr(SSL_F_SSL_CTX_USE_CERTIFICATE_CHAIN_FILE, ERR_R_BUF_LIB);
+        SSLerr(SSL_F_USE_CERTIFICATE_CHAIN_FILE, ERR_R_BUF_LIB);
         goto end;
     }
 
     if (BIO_read_filename(in, file) <= 0) {
-        SSLerr(SSL_F_SSL_CTX_USE_CERTIFICATE_CHAIN_FILE, ERR_R_SYS_LIB);
+        SSLerr(SSL_F_USE_CERTIFICATE_CHAIN_FILE, ERR_R_SYS_LIB);
         goto end;
     }
 
     x = PEM_read_bio_X509_AUX(in, NULL, ctx->default_passwd_callback,
                               ctx->default_passwd_callback_userdata);
     if (x == NULL) {
-        SSLerr(SSL_F_SSL_CTX_USE_CERTIFICATE_CHAIN_FILE, ERR_R_PEM_LIB);
+        SSLerr(SSL_F_USE_CERTIFICATE_CHAIN_FILE, ERR_R_PEM_LIB);
         goto end;
     }
 
-    ret = SSL_CTX_use_certificate(ctx, x);
+    if (ctx)
+        ret = SSL_CTX_use_certificate(ctx, x);
+    else
+        ret = SSL_use_certificate(ssl, x);
 
     if (ERR_peek_error() != 0)
         ret = 0;                /* Key/certificate mismatch doesn't imply
@@ -682,7 +683,12 @@ int SSL_CTX_use_certificate_chain_file(SSL_CTX *ctx, const char *file)
         int r;
         unsigned long err;
 
-        if (!SSL_CTX_clear_chain_certs(ctx)) {
+        if (ctx)
+            r = SSL_CTX_clear_chain_certs(ctx);
+        else
+            r = SSL_clear_chain_certs(ssl);
+
+        if (r == 0) {
             ret = 0;
             goto end;
         }
@@ -691,17 +697,20 @@ int SSL_CTX_use_certificate_chain_file(SSL_CTX *ctx, const char *file)
                                        ctx->default_passwd_callback,
                                        ctx->default_passwd_callback_userdata))
                != NULL) {
-            r = SSL_CTX_add0_chain_cert(ctx, ca);
+            if (ctx)
+                r = SSL_CTX_add0_chain_cert(ctx, ca);
+            else
+                r = SSL_add0_chain_cert(ssl, ca);
+            /*
+             * Note that we must not free ca if it was successfully added to
+             * the chain (while we must free the main certificate, since its
+             * reference count is increased by SSL_CTX_use_certificate).
+             */
             if (!r) {
                 X509_free(ca);
                 ret = 0;
                 goto end;
             }
-            /*
-             * Note that we must not free r if it was successfully added to
-             * the chain (while we must free the main certificate, since its
-             * reference count is increased by SSL_CTX_use_certificate).
-             */
         }
         /* When the while loop ends, it's usually just EOF. */
         err = ERR_peek_last_error();
@@ -716,6 +725,16 @@ int SSL_CTX_use_certificate_chain_file(SSL_CTX *ctx, const char *file)
     X509_free(x);
     BIO_free(in);
     return (ret);
+}
+
+int SSL_CTX_use_certificate_chain_file(SSL_CTX *ctx, const char *file)
+{
+    return use_certificate_chain_file(ctx, NULL, file);
+}
+
+int SSL_use_certificate_chain_file(SSL *ssl, const char *file)
+{
+    return use_certificate_chain_file(NULL, ssl, file);
 }
 #endif
 

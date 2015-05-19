@@ -110,7 +110,7 @@
  */
 
 #include <stdio.h>
-#include "cryptlib.h"
+#include "internal/cryptlib.h"
 #include <openssl/objects.h>
 #include <openssl/evp.h>
 #ifndef OPENSSL_NO_ENGINE
@@ -119,7 +119,7 @@
 
 void EVP_MD_CTX_init(EVP_MD_CTX *ctx)
 {
-    memset(ctx, '\0', sizeof(*ctx));
+    memset(ctx, 0, sizeof(*ctx));
 }
 
 EVP_MD_CTX *EVP_MD_CTX_create(void)
@@ -360,7 +360,7 @@ int EVP_MD_CTX_cleanup(EVP_MD_CTX *ctx)
          */
         ENGINE_finish(ctx->engine);
 #endif
-    memset(ctx, '\0', sizeof(*ctx));
+    memset(ctx, 0, sizeof(*ctx));
 
     return 1;
 }

@@ -59,7 +59,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "cryptlib.h"
+#include "internal/cryptlib.h"
 #include <openssl/buffer.h>
 #include <openssl/txt_db.h>
 
@@ -123,7 +123,7 @@ TXT_DB *TXT_DB_read(BIO *in, int num)
             continue;
         else {
             buf->data[offset - 1] = '\0'; /* blat the '\n' */
-            if (!(p = OPENSSL_malloc(add + offset)))
+            if ((p = OPENSSL_malloc(add + offset)) == NULL)
                 goto err;
             offset = 0;
         }

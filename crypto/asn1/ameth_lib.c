@@ -57,7 +57,7 @@
  */
 
 #include <stdio.h>
-#include "cryptlib.h"
+#include "internal/cryptlib.h"
 #include <openssl/asn1t.h>
 #include <openssl/x509.h>
 #ifndef OPENSSL_NO_ENGINE
@@ -221,8 +221,8 @@ const EVP_PKEY_ASN1_METHOD *EVP_PKEY_asn1_find_str(ENGINE **pe,
         ameth = EVP_PKEY_asn1_get0(i);
         if (ameth->pkey_flags & ASN1_PKEY_ALIAS)
             continue;
-        if (((int)strlen(ameth->pem_str) == len) &&
-            !strncasecmp(ameth->pem_str, str, len))
+        if (((int)strlen(ameth->pem_str) == len)
+            && (strncasecmp(ameth->pem_str, str, len) == 0))
             return ameth;
     }
     return NULL;
@@ -288,8 +288,7 @@ EVP_PKEY_ASN1_METHOD *EVP_PKEY_asn1_new(int id, int flags,
     if (!ameth)
         return NULL;
 
-    memset(ameth, 0, sizeof(EVP_PKEY_ASN1_METHOD));
-
+    memset(ameth, 0, sizeof(*ameth));
     ameth->pkey_id = id;
     ameth->pkey_base_id = id;
     ameth->pkey_flags = flags | ASN1_PKEY_DYNAMIC;

@@ -88,14 +88,14 @@ static int get_index(CA_DB *db, char *id, char type)
         for (i = 0; i < sk_OPENSSL_PSTRING_num(db->db->data); i++) {
             pp = sk_OPENSSL_PSTRING_value(db->db->data, i);
             if (pp[DB_srptype][0] == DB_SRP_INDEX
-                && !strcmp(id, pp[DB_srpid]))
+                && strcmp(id, pp[DB_srpid]) == 0)
                 return i;
     } else
         for (i = 0; i < sk_OPENSSL_PSTRING_num(db->db->data); i++) {
             pp = sk_OPENSSL_PSTRING_value(db->db->data, i);
 
             if (pp[DB_srptype][0] != DB_SRP_INDEX
-                && !strcmp(id, pp[DB_srpid]))
+                && strcmp(id, pp[DB_srpid]) == 0)
                 return i;
         }
 
@@ -434,7 +434,7 @@ int srp_main(int argc, char **argv)
 
         if (pp[DB_srptype][0] == DB_SRP_INDEX) {
             maxgN = i;
-            if (gNindex < 0 && gN != NULL && !strcmp(gN, pp[DB_srpid]))
+            if ((gNindex < 0) && (gN != NULL) && strcmp(gN, pp[DB_srpid]) == 0)
                 gNindex = i;
 
             print_index(db, i, verbose > 1);
@@ -516,10 +516,13 @@ int srp_main(int argc, char **argv)
                 row[DB_srptype] = BUF_strdup("v");
                 row[DB_srpgN] = BUF_strdup(gNid);
 
-                if (!row[DB_srpid] || !row[DB_srpgN] || !row[DB_srptype]
-                    || !row[DB_srpverifier] || !row[DB_srpsalt]
-                    || (userinfo &&
-                         (!(row [DB_srpinfo] = BUF_strdup (userinfo))))
+                if ((row[DB_srpid] == NULL)
+                    || (row[DB_srpgN] == NULL)
+                    || (row[DB_srptype] == NULL)
+                    || (row[DB_srpverifier] == NULL)
+                    || (row[DB_srpsalt] == NULL)
+                    || (userinfo
+                        && ((row[DB_srpinfo] = BUF_strdup(userinfo)) == NULL))
                     || !update_index(db, row)) {
                     OPENSSL_free(row[DB_srpid]);
                     OPENSSL_free(row[DB_srpgN]);
@@ -596,10 +599,14 @@ int srp_main(int argc, char **argv)
                     row[DB_srptype][0] = 'v';
                     row[DB_srpgN] = BUF_strdup(gNid);
 
-                    if (!row[DB_srpid] || !row[DB_srpgN] || !row[DB_srptype]
-                        || !row[DB_srpverifier] || !row[DB_srpsalt]
+                    if (row[DB_srpid] == NULL
+                        || row[DB_srpgN] == NULL
+                        || row[DB_srptype] == NULL
+                        || row[DB_srpverifier] == NULL
+                        || row[DB_srpsalt] == NULL
                         || (userinfo
-                            && (!(row[DB_srpinfo] = BUF_strdup(userinfo)))))
+                            && ((row[DB_srpinfo] = BUF_strdup(userinfo))
+                                == NULL)))
                         goto end;
 
                     doupdatedb = 1;
@@ -612,12 +619,10 @@ int srp_main(int argc, char **argv)
                            user);
                 errors++;
             } else {
-                char **xpp =
-                    sk_OPENSSL_PSTRING_value(db->db->data, userindex);
+                char **xpp = sk_OPENSSL_PSTRING_value(db->db->data, userindex);
+
                 BIO_printf(bio_err, "user \"%s\" revoked. t\n", user);
-
                 xpp[DB_srptype][0] = 'R';
-
                 doupdatedb = 1;
             }
         }
@@ -674,5 +679,11 @@ int srp_main(int argc, char **argv)
     OBJ_cleanup();
     return (ret);
 }
+
+#else
+
+# if PEDANTIC
+static void *dummy = &dummy;
+# endif
 
 #endif

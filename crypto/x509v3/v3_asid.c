@@ -61,7 +61,7 @@
 
 #include <stdio.h>
 #include <string.h>
-#include "cryptlib.h"
+#include "internal/cryptlib.h"
 #include <openssl/conf.h>
 #include <openssl/asn1.h>
 #include <openssl/asn1t.h>
@@ -553,7 +553,7 @@ static void *v2i_ASIdentifiers(const struct v3_ext_method *method,
 
     for (i = 0; i < sk_CONF_VALUE_num(values); i++) {
         CONF_VALUE *val = sk_CONF_VALUE_value(values, i);
-        int i1, i2, i3, is_range, which;
+        int i1 = 0, i2 = 0, i3 = 0, is_range = 0, which = 0;
 
         /*
          * Figure out whether this is an AS or an RDI.
@@ -572,7 +572,7 @@ static void *v2i_ASIdentifiers(const struct v3_ext_method *method,
         /*
          * Handle inheritance.
          */
-        if (!strcmp(val->value, "inherit")) {
+        if (strcmp(val->value, "inherit") == 0) {
             if (v3_asid_add_inherit(asid, which))
                 continue;
             X509V3err(X509V3_F_V2I_ASIDENTIFIERS,

@@ -1,10 +1,5 @@
-/* ssl/kssl.h -*- mode: C; c-file-style: "eay" -*- */
-/*
- * Written by Vern Staats <staatsvr@asc.hpc.mil> for the OpenSSL project
- * 2000. project 2000.
- */
 /* ====================================================================
- * Copyright (c) 2000 The OpenSSL Project.  All rights reserved.
+ * Copyright (c) 2015 The OpenSSL Project.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -21,12 +16,12 @@
  * 3. All advertising materials mentioning features or use of this
  *    software must display the following acknowledgment:
  *    "This product includes software developed by the OpenSSL Project
- *    for use in the OpenSSL Toolkit. (http://www.OpenSSL.org/)"
+ *    for use in the OpenSSL Toolkit. (http://www.openssl.org/)"
  *
  * 4. The names "OpenSSL Toolkit" and "OpenSSL Project" must not be used to
  *    endorse or promote products derived from this software without
  *    prior written permission. For written permission, please contact
- *    licensing@OpenSSL.org.
+ *    openssl-core@openssl.org.
  *
  * 5. Products derived from this software may not be called "OpenSSL"
  *    nor may "OpenSSL" appear in their names without prior written
@@ -35,7 +30,7 @@
  * 6. Redistributions of any form whatsoever must retain the following
  *    acknowledgment:
  *    "This product includes software developed by the OpenSSL Project
- *    for use in the OpenSSL Toolkit (http://www.OpenSSL.org/)"
+ *    for use in the OpenSSL Toolkit (http://www.openssl.org/)"
  *
  * THIS SOFTWARE IS PROVIDED BY THE OpenSSL PROJECT ``AS IS'' AND ANY
  * EXPRESSED OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -57,32 +52,58 @@
  *
  */
 
-#ifndef KSSL_LCL_H
-# define KSSL_LCL_H
+#ifndef HEADER_NUMBERS_H
+# define HEADER_NUMBERS_H
 
-# include <openssl/kssl.h>
+# include <limits.h>
 
-# ifndef OPENSSL_NO_KRB5
+# if (-1 & 3) == 0x03		/* Two's complement */
 
-#ifdef  __cplusplus
-extern "C" {
+#  define __MAXUINT__(T) ((T) -1)
+#  define __MAXINT__(T) ((T) ((((T) 1) << ((sizeof(T) * CHAR_BIT) - 1)) ^ __MAXUINT__(T)))
+#  define __MININT__(T) (-__MAXINT__(T) - 1)
+
+# elif (-1 & 3) == 0x02		/* One's complement */
+
+#  define __MAXUINT__(T) (((T) -1) + 1)
+#  define __MAXINT__(T) ((T) ((((T) 1) << ((sizeof(T) * CHAR_BIT) - 1)) ^ __MAXUINT__(T)))
+#  define __MININT__(T) (-__MAXINT__(T))
+
+# elif (-1 & 3) == 0x01		/* Sign/magnitude */
+
+#  define __MAXINT__(T) ((T) (((((T) 1) << ((sizeof(T) * CHAR_BIT) - 2)) - 1) | (((T) 1) << ((sizeof(T) * CHAR_BIT) - 2))))
+#  define __MAXUINT__(T) ((T) (__MAXINT__(T) | (((T) 1) << ((sizeof(T) * CHAR_BIT) - 1))))
+#  define __MININT__(T) (-__MAXINT__(T))
+
+# else
+
+#  error "do not know the integer encoding on this architecture"
+
+# endif
+
+# ifndef INT8_MAX
+#  define INT8_MIN __MININT__(int8_t)
+#  define INT8_MAX __MAXINT__(int8_t)
+#  define UINT8_MAX __MAXUINT__(uint8_t)
+# endif
+
+# ifndef INT16_MAX
+#  define INT16_MIN __MININT__(int16_t)
+#  define INT16_MAX __MAXINT__(int16_t)
+#  define UINT16_MAX __MAXUINT__(uint16_t)
+# endif
+
+# ifndef INT32_MAX
+#  define INT32_MIN __MININT__(int32_t)
+#  define INT32_MAX __MAXINT__(int32_t)
+#  define UINT32_MAX __MAXUINT__(uint32_t)
+# endif
+
+# ifndef INT64_MAX
+#  define INT64_MIN __MININT__(int64_t)
+#  define INT64_MAX __MAXINT__(int64_t)
+#  define UINT64_MAX __MAXUINT__(uint64_t)
+# endif
+
 #endif
 
-/* Private (internal to OpenSSL) */
-void print_krb5_data(char *label, krb5_data *kdata);
-void print_krb5_authdata(char *label, krb5_authdata **adata);
-void print_krb5_keyblock(char *label, krb5_keyblock *keyblk);
-
-char *kstring(char *string);
-char *knumber(int len, krb5_octet *contents);
-
-const EVP_CIPHER *kssl_map_enc(krb5_enctype enctype);
-
-int kssl_keytab_is_available(KSSL_CTX *kssl_ctx);
-int kssl_tgt_is_available(KSSL_CTX *kssl_ctx);
-
-#ifdef  __cplusplus
-}
-#endif
-# endif                         /* OPENSSL_NO_KRB5 */
-#endif                          /* KSSL_LCL_H */

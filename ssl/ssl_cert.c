@@ -123,7 +123,7 @@
 # include <sys/types.h>
 #endif
 
-#include "o_dir.h"
+#include "internal/o_dir.h"
 #include <openssl/objects.h>
 #include <openssl/bio.h>
 #include <openssl/pem.h>
@@ -165,21 +165,6 @@ int SSL_get_ex_data_X509_STORE_CTX_idx(void)
     return ssl_x509_store_ctx_idx;
 }
 
-void ssl_cert_set_default_md(CERT *cert)
-{
-    /* Set digest values to defaults */
-#ifndef OPENSSL_NO_DSA
-    cert->pkeys[SSL_PKEY_DSA_SIGN].digest = EVP_sha1();
-#endif
-#ifndef OPENSSL_NO_RSA
-    cert->pkeys[SSL_PKEY_RSA_SIGN].digest = EVP_sha1();
-    cert->pkeys[SSL_PKEY_RSA_ENC].digest = EVP_sha1();
-#endif
-#ifndef OPENSSL_NO_EC
-    cert->pkeys[SSL_PKEY_ECC].digest = EVP_sha1();
-#endif
-}
-
 CERT *ssl_cert_new(void)
 {
     CERT *ret = OPENSSL_malloc(sizeof(*ret));
@@ -188,11 +173,10 @@ CERT *ssl_cert_new(void)
         SSLerr(SSL_F_SSL_CERT_NEW, ERR_R_MALLOC_FAILURE);
         return (NULL);
     }
-    memset(ret, 0, sizeof(CERT));
+    memset(ret, 0, sizeof(*ret));
 
     ret->key = &(ret->pkeys[SSL_PKEY_RSA_ENC]);
     ret->references = 1;
-    ssl_cert_set_default_md(ret);
     ret->sec_cb = ssl_security_default_callback;
     ret->sec_level = OPENSSL_TLS_SECURITY_LEVEL;
     ret->sec_ex = NULL;
@@ -209,19 +193,9 @@ CERT *ssl_cert_dup(CERT *cert)
         return (NULL);
     }
 
-    memset(ret, 0, sizeof(CERT));
+    memset(ret, 0, sizeof(*ret));
 
-    ret->key = &ret->pkeys[cert->key - &cert->pkeys[0]];
-    /*
-     * or ret->key = ret->pkeys + (cert->key - cert->pkeys), if you find that
-     * more readable
-     */
-
-    ret->valid = cert->valid;
-    ret->mask_k = cert->mask_k;
-    ret->mask_a = cert->mask_a;
-    ret->export_mask_k = cert->export_mask_k;
-    ret->export_mask_a = cert->export_mask_a;
+    ret->key = &ret->pkeys[cert->key - cert->pkeys];
 
 #ifndef OPENSSL_NO_RSA
     if (cert->rsa_tmp != NULL) {
@@ -291,7 +265,6 @@ CERT *ssl_cert_dup(CERT *cert)
                 goto err;
             }
         }
-        rpk->valid_flags = 0;
 #ifndef OPENSSL_NO_TLSEXT
         if (cert->pkeys[i].serverinfo != NULL) {
             /* Just copy everything. */
@@ -311,16 +284,7 @@ CERT *ssl_cert_dup(CERT *cert)
     }
 
     ret->references = 1;
-    /*
-     * Set digests to defaults. NB: we don't copy existing values as they
-     * will be set during handshake.
-     */
-    ssl_cert_set_default_md(ret);
-    /* Peer sigalgs set to NULL as we get these from handshake too */
-    ret->peer_sigalgs = NULL;
-    ret->peer_sigalgslen = 0;
-    /* Configured sigalgs however we copy across */
-
+    /* Configured sigalgs copied across */
     if (cert->conf_sigalgs) {
         ret->conf_sigalgs = OPENSSL_malloc(cert->conf_sigalgslen);
         if (!ret->conf_sigalgs)
@@ -366,8 +330,6 @@ CERT *ssl_cert_dup(CERT *cert)
         ret->chain_store = cert->chain_store;
     }
 
-    ret->ciphers_raw = NULL;
-
     ret->sec_cb = cert->sec_cb;
     ret->sec_level = cert->sec_level;
     ret->sec_ex = cert->sec_ex;
@@ -407,8 +369,6 @@ void ssl_cert_clear_certs(CERT *c)
         cpk->serverinfo = NULL;
         cpk->serverinfo_length = 0;
 #endif
-        /* Clear all flags apart from explicit sign */
-        cpk->valid_flags &= CERT_PKEY_EXPLICIT_SIGN;
     }
 }
 
@@ -443,20 +403,16 @@ void ssl_cert_free(CERT *c)
 #endif
 
     ssl_cert_clear_certs(c);
-    OPENSSL_free(c->peer_sigalgs);
     OPENSSL_free(c->conf_sigalgs);
     OPENSSL_free(c->client_sigalgs);
     OPENSSL_free(c->shared_sigalgs);
     OPENSSL_free(c->ctypes);
     X509_STORE_free(c->verify_store);
     X509_STORE_free(c->chain_store);
-    OPENSSL_free(c->ciphers_raw);
 #ifndef OPENSSL_NO_TLSEXT
     custom_exts_free(&c->cli_ext);
     custom_exts_free(&c->srv_ext);
 #endif
-    OPENSSL_clear_free(c->pms, c->pmslen);
-    c->pms = NULL;
     OPENSSL_free(c);
 }
 
