@@ -172,6 +172,7 @@ static void apps_startup()
     ERR_load_SSL_strings();
     OpenSSL_add_all_algorithms();
     OpenSSL_add_ssl_algorithms();
+    OPENSSL_load_builtin_modules();
     setup_ui_method();
     /*SSL_library_init();*/
 #ifndef OPENSSL_NO_ENGINE
@@ -199,41 +200,24 @@ static void apps_shutdown()
 
 static char *make_config_name()
 {
-    const char *t = X509_get_default_cert_area();
+    const char *t;
     size_t len;
     char *p;
 
-    len = strlen(t) + strlen(OPENSSL_CONF) + 2;
+    if ((t = getenv("OPENSSL_CONF")) != NULL
+        || (t = getenv("SSLEAY_CONF")) != NULL)
+        return BUF_strdup(t);
+
+    t = X509_get_default_cert_area();
+    len = strlen(t) + 1 + strlen(OPENSSL_CONF) + 1;
     p = app_malloc(len, "config filename buffer");
-    BUF_strlcpy(p, t, len);
+    strcpy(p, t);
 #ifndef OPENSSL_SYS_VMS
-    BUF_strlcat(p, "/", len);
+    strcat(p, "/");
 #endif
-    BUF_strlcat(p, OPENSSL_CONF, len);
+    strcat(p, OPENSSL_CONF);
 
     return p;
-}
-
-static int load_config(CONF *cnf)
-{
-    static int load_config_called = 0;
-
-    if (load_config_called)
-        return 1;
-    load_config_called = 1;
-    if (!cnf)
-        cnf = config;
-    if (!cnf)
-        return 1;
-
-    OPENSSL_load_builtin_modules();
-
-    if (CONF_modules_load(cnf, NULL, 0) <= 0) {
-        BIO_printf(bio_err, "Error configuring OpenSSL\n");
-        ERR_print_errors(bio_err);
-        return 0;
-    }
-    return 1;
 }
 
 static void lock_dbg_cb(int mode, int type, const char *file, int line)
@@ -305,12 +289,16 @@ void unbuffer(FILE *fp)
     setbuf(fp, NULL);
 }
 
-BIO *bio_open_default(const char *filename, const char *mode)
+static BIO *bio_open_default_(const char *filename, const char *mode, int quiet)
 {
     BIO *ret;
 
     if (filename == NULL || strcmp(filename, "-") == 0) {
         ret = *mode == 'r' ? dup_bio_in() : dup_bio_out();
+        if (quiet) {
+            ERR_clear_error();
+            return ret;
+        }
         if (ret != NULL)
             return ret;
         BIO_printf(bio_err,
@@ -318,6 +306,10 @@ BIO *bio_open_default(const char *filename, const char *mode)
                    *mode == 'r' ? "stdin" : "stdout", strerror(errno));
     } else {
         ret = BIO_new_file(filename, mode);
+        if (quiet) {
+            ERR_clear_error();
+            return ret;
+        }
         if (ret != NULL)
             return ret;
         BIO_printf(bio_err,
@@ -327,6 +319,14 @@ BIO *bio_open_default(const char *filename, const char *mode)
     }
     ERR_print_errors(bio_err);
     return NULL;
+}
+BIO *bio_open_default(const char *filename, const char *mode)
+{
+    return bio_open_default_(filename, mode, 0);
+}
+BIO *bio_open_default_quiet(const char *filename, const char *mode)
+{
+    return bio_open_default_(filename, mode, 1);
 }
 
 #if defined( OPENSSL_SYS_VMS)
@@ -338,12 +338,11 @@ int main(int argc, char *argv[])
     FUNCTION f, *fp;
     LHASH_OF(FUNCTION) *prog = NULL;
     char **copied_argv = NULL;
-    char *p, *pname, *to_free = NULL;
+    char *p, *pname;
     char buf[1024];
     const char *prompt;
     ARGS arg;
     int first, n, i, ret = 0;
-    long errline;
 
     arg.argv = NULL;
     arg.size = 0;
@@ -394,35 +393,10 @@ int main(int argc, char *argv[])
     pname = opt_progname(argv[0]);
 
     /* Lets load up our environment a little */
+    default_config_file = make_config_name();
     bio_in = dup_bio_in();
     bio_out = dup_bio_out();
     bio_err = BIO_new_fp(stderr, BIO_NOCLOSE | BIO_FP_TEXT);
-
-    /* Determine and load the config file. */
-    default_config_file = getenv("OPENSSL_CONF");
-    if (default_config_file == NULL)
-        default_config_file = getenv("SSLEAY_CONF");
-    if (default_config_file == NULL)
-        default_config_file = to_free = make_config_name();
-    if (!load_config(NULL))
-        goto end;
-    config = NCONF_new(NULL);
-    i = NCONF_load(config, default_config_file, &errline);
-    if (i == 0) {
-        if (ERR_GET_REASON(ERR_peek_last_error())
-            == CONF_R_NO_SUCH_FILE) {
-            BIO_printf(bio_err,
-                       "%s: WARNING: can't open config file: %s\n",
-                       pname, default_config_file);
-            ERR_clear_error();
-            NCONF_free(config);
-            config = NULL;
-        } else {
-            ERR_print_errors(bio_err);
-            NCONF_free(config);
-            exit(1);
-        }
-    }
 
     /* first check the program name */
     f.name = pname;
@@ -510,7 +484,7 @@ int main(int argc, char *argv[])
     ret = 1;
  end:
     OPENSSL_free(copied_argv);
-    OPENSSL_free(to_free);
+    OPENSSL_free(default_config_file);
     NCONF_free(config);
     config = NULL;
     lh_FUNCTION_free(prog);

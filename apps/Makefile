@@ -76,6 +76,9 @@ all:	exe
 
 exe:	$(EXE)
 
+openssl-vms.cnf: openssl.cnf
+	$(PERL) $(TOP)/VMS/VMSify-conf.pl < openssl.cnf > openssl-vms.cnf
+
 files:
 	$(PERL) $(TOP)/util/files.pl Makefile >> $(TOP)/MINFO
 
@@ -120,12 +123,12 @@ tests:
 lint:
 	echo nope >fluff
 
-depend:
-	@if [ -z "$(THIS)" ]; then \
-	    $(MAKE) -f $(TOP)/Makefile reflect THIS=$@; \
-	else \
-	    $(MAKEDEPEND) -- $(CFLAG) $(INCLUDES) $(DEPFLAG) -- $(EXE_SRC); \
-	fi
+update: openssl-vms.cnf local_depend
+
+depend: local_depend
+	@if [ -z "$(THIS)" ]; then $(MAKE) -f $(TOP)/Makefile reflect THIS=$@; fi
+local_depend:
+	@[ -z "$(THIS)" ] || $(MAKEDEPEND) -- $(CFLAG) $(INCLUDES) $(DEPFLAG) -- $(EXE_SRC); \
 
 dclean:
 	$(PERL) -pe 'if (/^# DO NOT DELETE THIS LINE/) {print; exit(0);}' $(MAKEFILE) >Makefile.new

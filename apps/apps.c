@@ -496,6 +496,72 @@ static char *app_get_pass(char *arg, int keepbio)
     return BUF_strdup(tpass);
 }
 
+static CONF *app_load_config_(BIO *in, const char *filename)
+{
+    long errorline = -1;
+    CONF *conf;
+    int i;
+
+    conf = NCONF_new(NULL);
+    i = NCONF_load_bio(conf, in, &errorline);
+    if (i > 0)
+        return conf;
+
+    if (errorline <= 0)
+        BIO_printf(bio_err, "%s: Can't load config file \"%s\"\n",
+                   opt_getprog(), filename);
+    else
+        BIO_printf(bio_err, "%s: Error on line %ld of config file \"%s\"\n",
+                   opt_getprog(), errorline, filename);
+    NCONF_free(conf);
+    return NULL;
+}
+CONF *app_load_config(const char *filename)
+{
+    BIO *in;
+    CONF *conf;
+
+    in = bio_open_default(filename, "r");
+    if (in == NULL)
+        return NULL;
+
+    conf = app_load_config_(in, filename);
+    BIO_free(in);
+    return conf;
+}
+CONF *app_load_config_quiet(const char *filename)
+{
+    BIO *in;
+    CONF *conf;
+
+    in = bio_open_default_quiet(filename, "r");
+    if (in == NULL)
+        return NULL;
+
+    conf = app_load_config_(in, filename);
+    BIO_free(in);
+    return conf;
+}
+
+int app_load_modules(const CONF *config)
+{
+    CONF *to_free = NULL;
+
+    if (config == NULL)
+	config = to_free = app_load_config_quiet(default_config_file);
+    if (config == NULL)
+	return 1;
+
+    if (CONF_modules_load(config, NULL, 0) <= 0) {
+        BIO_printf(bio_err, "Error configuring OpenSSL modules\n");
+        ERR_print_errors(bio_err);
+        NCONF_free(to_free);
+        return 0;
+    }
+    NCONF_free(to_free);
+    return 1;
+}
+
 int add_oid_section(CONF *conf)
 {
     char *p;
@@ -1559,8 +1625,7 @@ CA_DB *load_index(char *dbfile, DB_ATTR *db_attr)
     TXT_DB *tmpdb = NULL;
     BIO *in;
     CONF *dbattr_conf = NULL;
-    char buf[1][BSIZE];
-    long errorline = -1;
+    char buf[BSIZE];
 
     in = BIO_new_file(dbfile, "r");
     if (in == NULL) {
@@ -1571,22 +1636,11 @@ CA_DB *load_index(char *dbfile, DB_ATTR *db_attr)
         goto err;
 
 #ifndef OPENSSL_SYS_VMS
-    BIO_snprintf(buf[0], sizeof buf[0], "%s.attr", dbfile);
+    BIO_snprintf(buf, sizeof buf, "%s.attr", dbfile);
 #else
-    BIO_snprintf(buf[0], sizeof buf[0], "%s-attr", dbfile);
+    BIO_snprintf(buf, sizeof buf, "%s-attr", dbfile);
 #endif
-    dbattr_conf = NCONF_new(NULL);
-    if (NCONF_load(dbattr_conf, buf[0], &errorline) <= 0) {
-        if (errorline > 0) {
-            BIO_printf(bio_err,
-                       "error on line %ld of db attribute file '%s'\n",
-                       errorline, buf[0]);
-            goto err;
-        } else {
-            NCONF_free(dbattr_conf);
-            dbattr_conf = NULL;
-        }
-    }
+    dbattr_conf = app_load_config(buf);
 
     retdb = app_malloc(sizeof(*retdb), "new DB");
     retdb->db = tmpdb;
@@ -2202,7 +2256,6 @@ void jpake_server_auth(BIO *out, BIO *conn, const char *secret)
 
 #endif
 
-#ifndef OPENSSL_NO_TLSEXT
 /*-
  * next_protos_parse parses a comma separated list of strings into a string
  * in a format suitable for passing to SSL_CTX_set_next_protos_advertised.
@@ -2238,7 +2291,6 @@ unsigned char *next_protos_parse(unsigned short *outlen, const char *in)
     *outlen = len + 1;
     return out;
 }
-#endif                          /* ndef OPENSSL_NO_TLSEXT */
 
 void print_cert_checks(BIO *bio, X509 *x,
                        const char *checkhost,

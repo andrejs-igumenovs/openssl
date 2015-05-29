@@ -300,7 +300,7 @@ test_ecdh: $(ECDHTEST)$(EXE_EXT)
 
 test_verify: ../apps/openssl$(EXE_EXT)
 	@echo $(START) $@ -- expect some failures and expired certificates
-	OPENSSL_CONF=/dev/null ../util/shlib_wrap.sh ../apps/openssl verify -CApath ../certs/demo ../certs/demo/*.pem
+	../util/shlib_wrap.sh ../apps/openssl verify -CApath ../certs/demo ../certs/demo/*.pem
 
 test_dh: $(DHTEST)$(EXE_EXT)
 	@echo $(START) $@
@@ -345,7 +345,7 @@ test_ssl: keyU.ss certU.ss certCA.ss certP1.ss keyP1.ss certP2.ss keyP2.ss \
 	@sh ./testsslproxy keyP2.ss certP2.ss intP2.ss
 
 test_ca: ../apps/openssl$(EXE_EXT) testca CAss.cnf Uss.cnf
-	@if OPENSSL_CONF=/dev/null ../util/shlib_wrap.sh ../apps/openssl no-rsa; then \
+	@if ../util/shlib_wrap.sh ../apps/openssl no-rsa; then \
 	  echo SKIP $@ -- requires RSA; \
 	else \
 	  echo $(START) $@; \
@@ -353,7 +353,7 @@ test_ca: ../apps/openssl$(EXE_EXT) testca CAss.cnf Uss.cnf
 	fi
 
 test_tsa: ../apps/openssl$(EXE_EXT) testtsa CAtsa.cnf ../util/shlib_wrap.sh
-	@if OPENSSL_CONF=/dev/null ../util/shlib_wrap.sh ../apps/openssl no-rsa; then \
+	@if ../util/shlib_wrap.sh ../apps/openssl no-rsa; then \
 	    echo SKIP $@ -- requires RSA; \
 	else \
 	  echo $(START) $@; \
@@ -370,7 +370,7 @@ test_jpake: $(JPAKETEST)$(EXE_EXT)
 
 test_cms: ../apps/openssl$(EXE_EXT) cms-test.pl smcont.txt
 	@echo $(START) $@
-	OPENSSL_CONFIG=/dev/null $(PERL) cms-test.pl
+	$(PERL) cms-test.pl
 
 test_srp: $(SRPTEST)$(EXE_EXT)
 	@echo $(START) $@
@@ -392,12 +392,13 @@ test_constant_time: $(CONSTTIMETEST)$(EXE_EXT)
 	@echo $(START) $@
 	../util/shlib_wrap.sh ./$(CONSTTIMETEST)
 
-depend:
-	@if [ -z "$(THIS)" ]; then \
-	    $(MAKE) -f $(TOP)/Makefile reflect THIS=$@; \
-	else \
-	    $(MAKEDEPEND) -- $(CFLAG) $(INCLUDES) $(DEPFLAG) -- $(PROGS) $(SRC); \
-	fi
+update: local_depend
+	@if [ -z "$(THIS)" ]; then $(MAKE) -f $(TOP)/Makefile reflect THIS=$@; fi
+
+depend: local_depend
+	@if [ -z "$(THIS)" ]; then $(MAKE) -f $(TOP)/Makefile reflect THIS=$@; fi
+local_depend:
+	@[ -z "$(THIS)" ] || $(MAKEDEPEND) -- $(CFLAG) $(INCLUDES) $(DEPFLAG) -- $(PROGS) $(SRC)
 
 dclean:
 	$(PERL) -pe 'if (/^# DO NOT DELETE THIS LINE/) {print; exit(0);}' $(MAKEFILE) >Makefile.new
@@ -690,16 +691,17 @@ evp_extra_test.o: ../include/openssl/safestack.h ../include/openssl/sha.h
 evp_extra_test.o: ../include/openssl/stack.h ../include/openssl/symhacks.h
 evp_extra_test.o: ../include/openssl/x509.h ../include/openssl/x509_vfy.h
 evp_extra_test.o: evp_extra_test.c
-evp_test.o: ../include/openssl/asn1.h ../include/openssl/bio.h
-evp_test.o: ../include/openssl/buffer.h ../include/openssl/conf.h
-evp_test.o: ../include/openssl/crypto.h ../include/openssl/e_os2.h
-evp_test.o: ../include/openssl/ec.h ../include/openssl/ecdh.h
-evp_test.o: ../include/openssl/ecdsa.h ../include/openssl/err.h
-evp_test.o: ../include/openssl/evp.h ../include/openssl/lhash.h
-evp_test.o: ../include/openssl/obj_mac.h ../include/openssl/objects.h
-evp_test.o: ../include/openssl/opensslconf.h ../include/openssl/opensslv.h
-evp_test.o: ../include/openssl/ossl_typ.h ../include/openssl/pem.h
-evp_test.o: ../include/openssl/pem2.h ../include/openssl/pkcs7.h
+evp_test.o: ../include/internal/numbers.h ../include/openssl/asn1.h
+evp_test.o: ../include/openssl/bio.h ../include/openssl/buffer.h
+evp_test.o: ../include/openssl/conf.h ../include/openssl/crypto.h
+evp_test.o: ../include/openssl/e_os2.h ../include/openssl/ec.h
+evp_test.o: ../include/openssl/ecdh.h ../include/openssl/ecdsa.h
+evp_test.o: ../include/openssl/err.h ../include/openssl/evp.h
+evp_test.o: ../include/openssl/lhash.h ../include/openssl/obj_mac.h
+evp_test.o: ../include/openssl/objects.h ../include/openssl/opensslconf.h
+evp_test.o: ../include/openssl/opensslv.h ../include/openssl/ossl_typ.h
+evp_test.o: ../include/openssl/pem.h ../include/openssl/pem2.h
+evp_test.o: ../include/openssl/pkcs12.h ../include/openssl/pkcs7.h
 evp_test.o: ../include/openssl/safestack.h ../include/openssl/sha.h
 evp_test.o: ../include/openssl/stack.h ../include/openssl/symhacks.h
 evp_test.o: ../include/openssl/x509.h ../include/openssl/x509_vfy.h

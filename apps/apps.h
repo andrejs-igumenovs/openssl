@@ -147,7 +147,6 @@ long app_RAND_load_files(char *file); /* `file' is a list of files to read,
                                        * (see e_os.h).  The string is
                                        * destroyed! */
 
-extern CONF *config;
 extern char *default_config_file;
 extern BIO *bio_in;
 extern BIO *bio_out;
@@ -155,6 +154,10 @@ extern BIO *bio_err;
 BIO *dup_bio_in(void);
 BIO *dup_bio_out(void);
 BIO *bio_open_default(const char *filename, const char *mode);
+BIO *bio_open_default_quiet(const char *filename, const char *mode);
+CONF *app_load_config(const char *filename);
+CONF *app_load_config_quiet(const char *filename);
+int app_load_modules(const CONF *config);
 void unbuffer(FILE *fp);
 
 /* Often used in calls to bio_open_default. */
@@ -340,10 +343,15 @@ typedef struct options_st {
     const char *helpstr;
 } OPTIONS;
 
-typedef struct opt_pair_st {
+/*
+ * A string/int pairing; widely use for option value lookup, hence the
+ * name OPT_PAIR. But that name is misleading in s_cb.c, so we also use
+ * the "generic" name STRINT_PAIR.
+ */
+typedef struct string_int_pair_st {
     const char *name;
     int retval;
-} OPT_PAIR;
+} OPT_PAIR, STRINT_PAIR;
 
 /* Flags to pass into opt_format; see FORMAT_xxx, below. */
 # define OPT_FMT_PEMDER          (1L <<  1)
@@ -509,9 +517,7 @@ void jpake_client_auth(BIO *out, BIO *conn, const char *secret);
 void jpake_server_auth(BIO *out, BIO *conn, const char *secret);
 # endif
 
-# ifndef OPENSSL_NO_TLSEXT
 unsigned char *next_protos_parse(unsigned short *outlen, const char *in);
-# endif                         /* ndef OPENSSL_NO_TLSEXT */
 
 void print_cert_checks(BIO *bio, X509 *x,
                        const char *checkhost,

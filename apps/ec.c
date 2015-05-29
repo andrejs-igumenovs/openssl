@@ -176,6 +176,7 @@ int ec_main(int argc, char **argv)
         case OPT_CIPHER:
             if (!opt_cipher(opt_unknown(), &enc))
                 goto opthelp;
+            break;
         case OPT_CONV_FORM:
             if (!opt_pair(opt_arg(), conv_forms, &i))
                 goto opthelp;
@@ -197,6 +198,9 @@ int ec_main(int argc, char **argv)
         BIO_printf(bio_err, "Error getting passwords\n");
         goto end;
     }
+
+    if (!app_load_modules(NULL))
+        goto end;
 
     in = bio_open_default(infile, RB(informat));
     if (in == NULL)

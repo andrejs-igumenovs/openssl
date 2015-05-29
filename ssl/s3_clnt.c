@@ -165,9 +165,7 @@
 
 static int ssl_set_version(SSL *s);
 static int ca_dn_cmp(const X509_NAME *const *a, const X509_NAME *const *b);
-#ifndef OPENSSL_NO_TLSEXT
 static int ssl3_check_finished(SSL *s);
-#endif
 static int ssl_cipher_list_to_bytes(SSL *s, STACK_OF(SSL_CIPHER) *sk,
                                     unsigned char *p,
                                     int (*put_cb) (const SSL_CIPHER *,
@@ -309,12 +307,10 @@ int ssl3_connect(SSL *s)
 
             if (s->hit) {
                 s->state = SSL3_ST_CR_FINISHED_A;
-#ifndef OPENSSL_NO_TLSEXT
                 if (s->tlsext_ticket_expected) {
                     /* receive renewed session ticket */
                     s->state = SSL3_ST_CR_SESSION_TICKET_A;
                 }
-#endif
             } else {
                 s->state = SSL3_ST_CR_CERT_A;
             }
@@ -322,7 +318,6 @@ int ssl3_connect(SSL *s)
             break;
         case SSL3_ST_CR_CERT_A:
         case SSL3_ST_CR_CERT_B:
-#ifndef OPENSSL_NO_TLSEXT
             /* Noop (ret = 0) for everything but EAP-FAST. */
             ret = ssl3_check_finished(s);
             if (ret < 0)
@@ -333,7 +328,7 @@ int ssl3_connect(SSL *s)
                 s->init_num = 0;
                 break;
             }
-#endif
+
             /* Check if it is anon DH/ECDH, SRP auth */
             /* or PSK */
             if (!
@@ -343,7 +338,7 @@ int ssl3_connect(SSL *s)
                 ret = ssl3_get_server_certificate(s);
                 if (ret <= 0)
                     goto end;
-#ifndef OPENSSL_NO_TLSEXT
+
                 if (s->tlsext_status_expected)
                     s->state = SSL3_ST_CR_CERT_STATUS_A;
                 else
@@ -352,12 +347,7 @@ int ssl3_connect(SSL *s)
                 skip = 1;
                 s->state = SSL3_ST_CR_KEY_EXCH_A;
             }
-#else
-            } else
-                skip = 1;
 
-            s->state = SSL3_ST_CR_KEY_EXCH_A;
-#endif
             s->init_num = 0;
             break;
 
@@ -470,7 +460,7 @@ int ssl3_connect(SSL *s)
             if (ret <= 0)
                 goto end;
 
-#if defined(OPENSSL_NO_TLSEXT) || defined(OPENSSL_NO_NEXTPROTONEG)
+#if defined(OPENSSL_NO_NEXTPROTONEG)
             s->state = SSL3_ST_CW_FINISHED_A;
 #else
             if (s->s3->next_proto_neg_seen)
@@ -505,7 +495,7 @@ int ssl3_connect(SSL *s)
 
             break;
 
-#if !defined(OPENSSL_NO_TLSEXT) && !defined(OPENSSL_NO_NEXTPROTONEG)
+#if !defined(OPENSSL_NO_NEXTPROTONEG)
         case SSL3_ST_CW_NEXT_PROTO_A:
         case SSL3_ST_CW_NEXT_PROTO_B:
             ret = ssl3_send_next_proto(s);
@@ -538,21 +528,17 @@ int ssl3_connect(SSL *s)
                     s->s3->delay_buf_pop_ret = 0;
                 }
             } else {
-#ifndef OPENSSL_NO_TLSEXT
                 /*
                  * Allow NewSessionTicket if ticket expected
                  */
                 if (s->tlsext_ticket_expected)
                     s->s3->tmp.next_state = SSL3_ST_CR_SESSION_TICKET_A;
                 else
-#endif
-
                     s->s3->tmp.next_state = SSL3_ST_CR_FINISHED_A;
             }
             s->init_num = 0;
             break;
 
-#ifndef OPENSSL_NO_TLSEXT
         case SSL3_ST_CR_SESSION_TICKET_A:
         case SSL3_ST_CR_SESSION_TICKET_B:
             ret = ssl3_get_new_session_ticket(s);
@@ -570,7 +556,6 @@ int ssl3_connect(SSL *s)
             s->state = SSL3_ST_CR_KEY_EXCH_A;
             s->init_num = 0;
             break;
-#endif
 
         case SSL3_ST_CR_FINISHED_A:
         case SSL3_ST_CR_FINISHED_B:
@@ -783,15 +768,11 @@ int ssl3_client_hello(SSL *s)
             goto err;
 
         if ((sess == NULL) || (sess->ssl_version != s->version) ||
-#ifdef OPENSSL_NO_TLSEXT
-            !sess->session_id_length ||
-#else
             /*
              * In the case of EAP-FAST, we can have a pre-shared
              * "ticket" without a session ID.
              */
             (!sess->session_id_length && !sess->tlsext_tick) ||
-#endif
             (sess->not_resumable)) {
             if (!ssl_get_new_session(s, 0))
                 goto err;
@@ -922,7 +903,6 @@ int ssl3_client_hello(SSL *s)
 #endif
         *(p++) = 0;             /* Add the NULL method */
 
-#ifndef OPENSSL_NO_TLSEXT
         /* TLS extensions */
         if (ssl_prepare_clienthello_tlsext(s) <= 0) {
             SSLerr(SSL_F_SSL3_CLIENT_HELLO, SSL_R_CLIENTHELLO_TLSEXT);
@@ -935,7 +915,6 @@ int ssl3_client_hello(SSL *s)
             SSLerr(SSL_F_SSL3_CLIENT_HELLO, ERR_R_INTERNAL_ERROR);
             goto err;
         }
-#endif
 
         l = p - d;
         if (!ssl_set_handshake_header(s, SSL3_MT_CLIENT_HELLO, l)) {
@@ -968,8 +947,7 @@ int ssl3_get_server_hello(SSL *s)
      * Hello verify request and/or server hello version may not match so set
      * first packet if we're negotiating version.
      */
-    if (SSL_IS_DTLS(s))
-        s->first_packet = 1;
+    s->first_packet = 1;
 
     n = s->method->ssl_get_message(s,
                                    SSL3_ST_CR_SRVR_HELLO_A,
@@ -978,8 +956,8 @@ int ssl3_get_server_hello(SSL *s)
     if (!ok)
         return ((int)n);
 
+    s->first_packet = 0;
     if (SSL_IS_DTLS(s)) {
-        s->first_packet = 0;
         if (s->s3->tmp.message_type == DTLS1_MT_HELLO_VERIFY_REQUEST) {
             if (s->d1->send_cookie == 0) {
                 s->s3->tmp.reuse_message = 1;
@@ -1082,7 +1060,7 @@ int ssl3_get_server_hello(SSL *s)
         SSLerr(SSL_F_SSL3_GET_SERVER_HELLO, SSL_R_SSL3_SESSION_ID_TOO_LONG);
         goto f_err;
     }
-#ifndef OPENSSL_NO_TLSEXT
+
     /*
      * Check if we can resume the session based on external pre-shared secret.
      * EAP-FAST (RFC 4851) supports two types of session resumption.
@@ -1111,7 +1089,6 @@ int ssl3_get_server_hello(SSL *s)
             goto f_err;
         }
     }
-#endif                          /* OPENSSL_NO_TLSEXT */
 
     if (j != 0 && j == s->session->session_id_length
         && memcmp(p, s->session->session_id, j) == 0) {
@@ -1237,13 +1214,11 @@ int ssl3_get_server_hello(SSL *s)
     }
 #endif
 
-#ifndef OPENSSL_NO_TLSEXT
     /* TLS extensions */
     if (!ssl_parse_serverhello_tlsext(s, &p, d, n)) {
         SSLerr(SSL_F_SSL3_GET_SERVER_HELLO, SSL_R_PARSE_TLSEXT);
         goto err;
     }
-#endif
 
     if (p != (d + n)) {
         /* wrong packet length */
@@ -2240,7 +2215,6 @@ static int ca_dn_cmp(const X509_NAME *const *a, const X509_NAME *const *b)
     return (X509_NAME_cmp(*a, *b));
 }
 
-#ifndef OPENSSL_NO_TLSEXT
 int ssl3_get_new_session_ticket(SSL *s)
 {
     int ok, al, ret = 0, ticklen;
@@ -2363,7 +2337,6 @@ int ssl3_get_cert_status(SSL *s)
     s->state = SSL_ST_ERR;
     return (-1);
 }
-#endif
 
 int ssl3_get_server_done(SSL *s)
 {
@@ -3324,6 +3297,7 @@ int ssl3_check_cert_and_algorithm(SSL *s)
     int i, idx;
     long alg_k, alg_a;
     EVP_PKEY *pkey = NULL;
+    int pkey_bits;
     SESS_CERT *sc;
 #ifndef OPENSSL_NO_RSA
     RSA *rsa;
@@ -3373,6 +3347,7 @@ int ssl3_check_cert_and_algorithm(SSL *s)
     }
 #endif
     pkey = X509_get_pubkey(sc->peer_pkeys[idx].x509);
+    pkey_bits = EVP_PKEY_bits(pkey);
     i = X509_certificate_type(sc->peer_pkeys[idx].x509, pkey);
     EVP_PKEY_free(pkey);
 
@@ -3418,7 +3393,8 @@ int ssl3_check_cert_and_algorithm(SSL *s)
 # endif
 #endif
 
-    if (SSL_C_IS_EXPORT(s->s3->tmp.new_cipher) && !has_bits(i, EVP_PKT_EXP)) {
+    if (SSL_C_IS_EXPORT(s->s3->tmp.new_cipher) &&
+        pkey_bits > SSL_C_EXPORT_PKEYLENGTH(s->s3->tmp.new_cipher)) {
 #ifndef OPENSSL_NO_RSA
         if (alg_k & SSL_kRSA) {
             if (rsa == NULL
@@ -3454,7 +3430,6 @@ int ssl3_check_cert_and_algorithm(SSL *s)
     return (0);
 }
 
-#ifndef OPENSSL_NO_TLSEXT
 /*
  * Normally, we can tell if the server is resuming the session from
  * the session ID. EAP-FAST (RFC 4851), however, relies on the next server
@@ -3504,7 +3479,7 @@ static int ssl3_check_finished(SSL *s)
     return 0;
 }
 
-# ifndef OPENSSL_NO_NEXTPROTONEG
+#ifndef OPENSSL_NO_NEXTPROTONEG
 int ssl3_send_next_proto(SSL *s)
 {
     unsigned int len, padding_len;
@@ -3527,7 +3502,6 @@ int ssl3_send_next_proto(SSL *s)
 
     return ssl3_do_write(s, SSL3_RT_HANDSHAKE);
 }
-# endif
 #endif
 
 int ssl_do_client_cert_cb(SSL *s, X509 **px509, EVP_PKEY **ppkey)

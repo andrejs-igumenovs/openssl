@@ -679,6 +679,9 @@ ASN1_OBJECT *ASN1_OBJECT_create(int nid, unsigned char *data, int len,
 
 int ASN1_INTEGER_get_int64(int64_t *pr, const ASN1_INTEGER *a);
 int ASN1_INTEGER_set_int64(ASN1_INTEGER *a, int64_t r);
+int ASN1_INTEGER_get_uint64(uint64_t *pr, const ASN1_INTEGER *a);
+int ASN1_INTEGER_set_uint64(ASN1_INTEGER *a, uint64_t r);
+
 int ASN1_INTEGER_set(ASN1_INTEGER *a, long v);
 long ASN1_INTEGER_get(const ASN1_INTEGER *a);
 ASN1_INTEGER *BN_to_ASN1_INTEGER(const BIGNUM *bn, ASN1_INTEGER *ai);
@@ -967,6 +970,7 @@ void ERR_load_ASN1_strings(void);
 # define ASN1_F_ASN1_SIGN                                 128
 # define ASN1_F_ASN1_STR2TYPE                             179
 # define ASN1_F_ASN1_STRING_GET_INT64                     227
+# define ASN1_F_ASN1_STRING_GET_UINT64                    230
 # define ASN1_F_ASN1_STRING_SET                           186
 # define ASN1_F_ASN1_STRING_TABLE_ADD                     129
 # define ASN1_F_ASN1_STRING_TO_BN                         228
@@ -1029,9 +1033,11 @@ void ERR_load_ASN1_strings(void);
 # define ASN1_F_OID_MODULE_INIT                           174
 # define ASN1_F_PARSE_TAGGING                             182
 # define ASN1_F_PKCS5_PBE2_SET_IV                         167
+# define ASN1_F_PKCS5_PBE2_SET_SCRYPT                     231
 # define ASN1_F_PKCS5_PBE_SET                             202
 # define ASN1_F_PKCS5_PBE_SET0_ALGOR                      215
 # define ASN1_F_PKCS5_PBKDF2_SET                          219
+# define ASN1_F_PKCS5_SCRYPT_SET                          232
 # define ASN1_F_SMIME_READ_ASN1                           212
 # define ASN1_F_SMIME_TEXT                                213
 # define ASN1_F_STBL_MODULE_INIT                          223
@@ -1085,6 +1091,7 @@ void ERR_load_ASN1_strings(void);
 # define ASN1_R_ILLEGAL_HEX                               178
 # define ASN1_R_ILLEGAL_IMPLICIT_TAG                      179
 # define ASN1_R_ILLEGAL_INTEGER                           180
+# define ASN1_R_ILLEGAL_NEGATIVE_VALUE                    226
 # define ASN1_R_ILLEGAL_NESTED_TAGGING                    181
 # define ASN1_R_ILLEGAL_NULL                              125
 # define ASN1_R_ILLEGAL_NULL_VALUE                        182
@@ -1104,6 +1111,7 @@ void ERR_load_ASN1_strings(void);
 # define ASN1_R_INVALID_MODIFIER                          186
 # define ASN1_R_INVALID_NUMBER                            187
 # define ASN1_R_INVALID_OBJECT_ENCODING                   216
+# define ASN1_R_INVALID_SCRYPT_PARAMETERS                 227
 # define ASN1_R_INVALID_SEPARATOR                         131
 # define ASN1_R_INVALID_STRING_TABLE_VALUE                218
 # define ASN1_R_INVALID_TIME_FORMAT                       132

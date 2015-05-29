@@ -489,6 +489,9 @@ int x509_main(int argc, char **argv)
         goto opthelp;
     }
 
+    if (!app_load_modules(NULL))
+        goto end;
+
     out = bio_open_default(outfile, "w");
     if (out == NULL)
         goto end;
@@ -521,19 +524,9 @@ int x509_main(int argc, char **argv)
     }
 
     if (extfile) {
-        long errorline = -1;
         X509V3_CTX ctx2;
-        extconf = NCONF_new(NULL);
-        if (!NCONF_load(extconf, extfile, &errorline)) {
-            if (errorline <= 0)
-                BIO_printf(bio_err,
-                           "error loading the config file '%s'\n", extfile);
-            else
-                BIO_printf(bio_err,
-                           "error on line %ld of config file '%s'\n",
-                           errorline, extfile);
+        if ((extconf = app_load_config(extfile)) == NULL)
             goto end;
-        }
         if (!extsect) {
             extsect = NCONF_get_string(extconf, "default", "extensions");
             if (!extsect) {
